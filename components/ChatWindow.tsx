@@ -37,6 +37,9 @@ interface Props {
   onSessionStatsChange?: (stats: SessionStatsInfo | null) => void;
   onSessionStatsPanelOpen?: () => void;
   onContextUsageChange?: (usage: { percent: number | null; contextWindow: number; tokens: number | null } | null) => void;
+  onSelectProject?: () => void;
+  projectOptions?: string[];
+  onProjectChange?: (projectRoot: string) => void;
   onOpenFile?: (filePath: string) => void;
   /** Fired after non-image drops are copied into the session cwd (so the explorer can refresh). */
   onProjectFilesImported?: () => void;
@@ -216,10 +219,9 @@ function ProcessDetailsGroup({ messageCount, toolCallCount, children, t }: { mes
   );
 }
 
-export function ChatWindow({ session, newSessionCwd, onAgentEnd, onSessionCreated, onSessionForked, modelsRefreshKey, chatInputRef, onBranchDataChange, onSystemPromptChange, onSessionStatsChange, onSessionStatsPanelOpen, onContextUsageChange, onOpenFile, onProjectFilesImported }: Props) {
+export function ChatWindow({ session, newSessionCwd, onAgentEnd, onSessionCreated, onSessionForked, modelsRefreshKey, chatInputRef, onBranchDataChange, onSystemPromptChange, onSessionStatsChange, onSessionStatsPanelOpen, onContextUsageChange, onSelectProject, projectOptions, onProjectChange, onOpenFile, onProjectFilesImported }: Props) {
   const { t } = useI18n();
   const { soundEnabled, onSoundToggle, playDoneSound, unlockAudio } = useAudio();
-
   // Wrap onAgentEnd to play the completion sound. This is more reliable than
   // wrapping handleAgentEventRef because useAgentSession overwrites that ref
   // on every render (it syncs the latest callback), which would blow away an
@@ -384,7 +386,7 @@ export function ChatWindow({ session, newSessionCwd, onAgentEnd, onSessionCreate
     container.scrollTop = restoreScrollTop(container.scrollHeight, prevScrollDistanceRef.current);
     prevScrollDistanceRef.current = null;
   }, [visibleCount, scrollContainerRef]);
-  // Push session stats up to AppShell for the top bar.
+  // Push session stats up to AppShell for the stats panel and ring hover summary.
   // Compare scalar fields to avoid loops from new object identity each render.
   const statsKey = sessionStats
     ? [
@@ -846,10 +848,13 @@ export function ChatWindow({ session, newSessionCwd, onAgentEnd, onSessionCreate
       onAudioUnlock={unlockAudio}
       draftKey={session?.id ?? (newSessionCwd ? `new:${newSessionCwd}` : undefined)}
       cwd={session?.cwd ?? newSessionCwd}
-      autoFocus={isNew}
-      extensionStatuses={extensionStatuses}
-      contextUsage={contextUsage}
+      projectPath={session?.projectRoot ?? session?.cwd ?? newSessionCwd}
+      onSelectProject={onSelectProject}
+      projectOptions={projectOptions}
+      onProjectChange={onProjectChange}
       onSessionStatsPanelOpen={onSessionStatsPanelOpen}
+      contextUsage={contextUsage}
+      sessionStats={sessionStats}
     />
   );
 

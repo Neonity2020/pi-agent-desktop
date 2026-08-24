@@ -1,5 +1,5 @@
 import { useI18n } from "@/hooks/useI18n";
-import type { ContextUsage } from "@/lib/pi-types";
+import type { ContextUsage, SessionStatsInfo } from "@/lib/pi-types";
 
 const RING_SIZE = 14;
 const RING_STROKE = 2;
@@ -16,6 +16,7 @@ function fmtWindow(n: number): string {
 
 interface ContextUsageRingProps {
   contextUsage?: ContextUsage | null;
+  sessionStats?: SessionStatsInfo | null;
   /** Open the existing top-bar session-stats panel (AppShell openSessionStatsPanel). */
   onOpenStats?: () => void;
 }
@@ -23,14 +24,14 @@ interface ContextUsageRingProps {
 /**
  * Text-free usage ring next to the model selector (C1). The arc shows live
  * context-window fullness in a single accent color; it turns red when usage
- * reaches the high-risk threshold (≥90%). Hover shows the native HTML tooltip
- * "percent · window"; click opens the top-bar session-stats panel.
+ * reaches the high-risk threshold (≥90%). Hover shows the session token and
+ * context summary; click opens the top-bar session-stats panel.
  *
  * When there is no context usage yet (no session, or nothing has run), the ring
  * renders dimmed and inert, and no title is set — no dead "Context usage"
  * tooltip. Data only appears once the agent reports a context window.
  */
-export function ContextUsageRing({ contextUsage, onOpenStats }: ContextUsageRingProps) {
+export function ContextUsageRing({ contextUsage, sessionStats, onOpenStats }: ContextUsageRingProps) {
   const { t } = useI18n();
 
   const hasUsage = contextUsage != null;
@@ -47,9 +48,19 @@ export function ContextUsageRing({ contextUsage, onOpenStats }: ContextUsageRing
       : "var(--accent)";
   const filled = RING_CIRCUMFERENCE * (pct / 100);
 
-  const title = showTooltip
-    ? (percent !== null ? `${percent.toFixed(1)}%` : "—") + ` / ${fmtWindow(windowSize)}`
-    : t("chat.ctxUsage");
+  const tooltipParts: string[] = [];
+  if (showTooltip) {
+    tooltipParts.push(percent !== null ? `${percent.toFixed(1)}% ctx` : `— / ${fmtWindow(windowSize)}`);
+    if (sessionStats && sessionStats.tokens.total > 0) {
+      tooltipParts.push(`${fmtWindow(sessionStats.tokens.total)} tok`);
+    } else if (percent !== null && windowSize > 0) {
+      tooltipParts[0] += ` / ${fmtWindow(windowSize)}`;
+    }
+    if (sessionStats && sessionStats.cost > 0) {
+      tooltipParts.push(`$${sessionStats.cost.toFixed(3)}`);
+    }
+  }
+  const title = tooltipParts.length > 0 ? tooltipParts.join(" · ") : t("chat.ctxUsage");
 
   return (
     <button

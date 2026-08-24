@@ -17,13 +17,8 @@ import {
 import { FolderIcon, getFileIcon } from "./FileIcons";
 import { useIsMobile } from "@/hooks/useIsMobile";
 import { useI18n } from "@/hooks/useI18n";
-import {
-  isTauriDesktop,
-  readDesktopImageAttachments,
-  selectFilesNative,
-} from "@/lib/desktop-native";
 import type { ExtensionStatusItem } from "@/lib/types";
-import type { ContextUsage } from "@/lib/pi-types";
+import type { ContextUsage, SessionStatsInfo } from "@/lib/pi-types";
 import { ExtensionStatusBar } from "./ExtensionStatusBar";
 import { ContextUsageRing } from "./ContextUsageRing";
 
@@ -79,12 +74,22 @@ interface Props {
   draftKey?: string;
   /** Session working directory — enables the @ file autocomplete menu */
   cwd?: string | null;
+  /** Project root shown in the composer so the session context is always visible. */
+  projectPath?: string | null;
+  /** Open the project chooser and switch the active project. */
+  onSelectProject?: () => void;
+  /** Active project roots available to a new-session composer. */
+  projectOptions?: string[];
+  /** Switch the new-session composer to one of the active projects. */
+  onProjectChange?: (projectRoot: string) => void;
   /** Focus the textarea on mount / when this becomes true (e.g. New task page). */
   autoFocus?: boolean;
   /** Extension footer statuses (tools/err/last, etc.) shown next to the model selector */
   extensionStatuses?: ExtensionStatusItem[];
   /** Live context-window usage (numerator) for the usage ring next to the model selector */
   contextUsage?: ContextUsage | null;
+  /** Session token summary shown when hovering the usage ring */
+  sessionStats?: SessionStatsInfo | null;
   /** Open the top-bar session-stats panel when the usage ring is clicked */
   onSessionStatsPanelOpen?: () => void;
 }
@@ -126,6 +131,12 @@ const THINKING_LEVEL_DESC_KEYS: Record<typeof THINKING_LEVELS[number], string> =
   auto: "chat.thinkingUseDefault", off: "chat.thinkingOff", minimal: "chat.thinkingMinimal", low: "chat.thinkingLow",
   medium: "chat.thinkingMedium", high: "chat.thinkingHigh", xhigh: "chat.thinkingXhigh", max: "chat.thinkingMax",
 };
+
+function getProjectLabel(projectPath: string | null | undefined): string | null {
+  const normalized = projectPath?.replace(/[\\/]+$/, "");
+  if (!normalized) return null;
+  return normalized.split(/[\\/]/).pop() ?? normalized;
+}
 
 function formatTokenCount(tokens: number): string {
   if (tokens >= 1_000_000) return `${(tokens / 1_000_000).toFixed(1)}M`;
@@ -375,9 +386,14 @@ export const ChatInput = forwardRef<ChatInputHandle, Props>(function ChatInput({
   onPromptWithStreamingBehavior,
   draftKey,
   cwd,
+  projectPath,
+  onSelectProject,
+  projectOptions = [],
+  onProjectChange,
   autoFocus = false,
   extensionStatuses = [],
   contextUsage,
+  sessionStats,
   onSessionStatsPanelOpen,
 }: Props, ref) {
   const { t } = useI18n();
@@ -389,10 +405,11 @@ export const ChatInput = forwardRef<ChatInputHandle, Props>(function ChatInput({
   const [toolDropdownOpen, setToolDropdownOpen] = useState(false);
   const [thinkingDropdownOpen, setThinkingDropdownOpen] = useState(false);
   const [controlsMenuOpen, setControlsMenuOpen] = useState(false);
+  const [projectDropdownOpen, setProjectDropdownOpen] = useState(false);
   const [attachedImages, setAttachedImages] = useState<AttachedImage[]>(() => (
     draftKey ? draftImagesToAttachedImages(getDraft(draftKey)?.images) : []
   ));
-  const [attachError, setAttachError] = useState<string | null>(null);
+  const projectLabel = getProjectLabel(projectPath);
   const trimmedValue = value.trimStart();
   const bashMode = attachedImages.length === 0 && trimmedValue.startsWith("!");
   const bashExcluded = bashMode && trimmedValue.startsWith("!!");
@@ -416,12 +433,12 @@ export const ChatInput = forwardRef<ChatInputHandle, Props>(function ChatInput({
 
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const dropdownRef = useRef<HTMLDivElement>(null);
+  const projectDropdownRef = useRef<HTMLDivElement>(null);
   const modelDropdownPanelRef = useRef<HTMLDivElement>(null);
   const toolDropdownRef = useRef<HTMLDivElement>(null);
   const thinkingDropdownRef = useRef<HTMLDivElement>(null);
   const controlsMenuRef = useRef<HTMLDivElement>(null);
   const historyMenuRef = useRef<HTMLDivElement>(null);
-  const fileInputRef = useRef<HTMLInputElement>(null);
   const isComposingRef = useRef(false);
   const lastCompositionEndAtRef = useRef(0);
   const slashCommandsRequestedRef = useRef(false);
@@ -568,43 +585,6 @@ export const ChatInput = forwardRef<ChatInputHandle, Props>(function ChatInput({
       appendAttachedImages(newImages);
     } finally {
       pendingImageCountRef.current -= imageFiles.length;
-    }
-  }, [appendAttachedImages, isStreaming]);
-
-  const pickAttachedImages = useCallback(async () => {
-    if (isStreaming) return;
-    if (!isTauriDesktop()) {
-      fileInputRef.current?.click();
-      return;
-    }
-
-    const remaining = Math.max(
-      0,
-      MAX_ATTACHED_IMAGES - attachedImagesRef.current.length - pendingImageCountRef.current,
-    );
-    if (remaining <= 0) return;
-
-    try {
-      setAttachError(null);
-      const paths = await selectFilesNative({
-        multiple: true,
-        title: "Select images",
-        filters: [{ name: "Images", extensions: ["png", "jpg", "jpeg", "gif", "webp", "bmp", "svg"] }],
-      });
-      if (paths.length === 0) return;
-      pendingImageCountRef.current += Math.min(paths.length, remaining);
-      try {
-        const images = await readDesktopImageAttachments(paths.slice(0, remaining));
-        appendAttachedImages(images.map(({ data, mimeType, previewUrl }) => ({
-          data,
-          mimeType,
-          previewUrl,
-        })));
-      } finally {
-        pendingImageCountRef.current -= Math.min(paths.length, remaining);
-      }
-    } catch (error) {
-      setAttachError(error instanceof Error ? error.message : String(error));
     }
   }, [appendAttachedImages, isStreaming]);
 
@@ -1230,6 +1210,9 @@ export const ChatInput = forwardRef<ChatInputHandle, Props>(function ChatInput({
       if (controlsMenuRef.current && !controlsMenuRef.current.contains(e.target as Node)) {
         setControlsMenuOpen(false);
       }
+      if (projectDropdownRef.current && !projectDropdownRef.current.contains(e.target as Node)) {
+        setProjectDropdownOpen(false);
+      }
       if (historyMenuRef.current && !historyMenuRef.current.contains(e.target as Node) && !textareaRef.current?.contains(e.target as Node)) {
         setHistoryMenuOpen(false);
       }
@@ -1253,23 +1236,8 @@ export const ChatInput = forwardRef<ChatInputHandle, Props>(function ChatInput({
         padding: "0 16px 8px",
       }}
     >
-      {/* Hidden file input */}
-      <input
-        ref={fileInputRef}
-        type="file"
-        accept="image/*"
-        multiple
-        disabled={isStreaming}
-        style={{ display: "none" }}
-        onChange={(e) => {
-          const files = Array.from(e.target.files ?? []);
-          processImageFiles(files);
-          e.target.value = "";
-        }}
-      />
       <div className="chat-composer-wrap" style={{ maxWidth: 820, margin: "0 auto" }}>
         <ModelErrorBanner error={modelError} />
-        {attachError && <ModelNoticeBanner tone="error" title={t("chat.attachmentError")} body={attachError} />}
         <ModelScopeWarningBanner warnings={modelScopeWarnings} />
         {/* Queued steering / follow-up messages (delivered by pi on upcoming turns) */}
         {((queuedMessages?.steering.length ?? 0) + (queuedMessages?.followUp.length ?? 0)) > 0 && (
@@ -1912,39 +1880,89 @@ export const ChatInput = forwardRef<ChatInputHandle, Props>(function ChatInput({
           gap: 6,
         }}>
 
-          {/* LEFT: attach + model selector (idle) or steer/followup toggle (streaming) */}
+          {/* LEFT: project context + model selector (idle) or steer/followup toggle (streaming) */}
           <div style={{ flex: isMobile ? "1 1 auto" : "0 0 auto", minWidth: 0, display: "flex", alignItems: "center", gap: 2 }}>
-            <button
-              className="native-toolbar-button"
-              onClick={() => { void pickAttachedImages(); }}
-              disabled={isStreaming}
-             title={t("chat.attachImage")}
-              style={{
-                flexShrink: 0, display: "flex", alignItems: "center", justifyContent: "center",
-                width: 32, height: 32, padding: 0,
-                background: "none", border: "none",
-                borderRadius: 9,
-                color: attachedImages.length ? "var(--accent)" : "var(--text-muted)",
-                cursor: isStreaming ? "not-allowed" : "pointer",
-                opacity: isStreaming ? 0.5 : 1,
-                transition: "background 0.12s, color 0.12s",
-              }}
-              onMouseEnter={(e) => {
-                if (isStreaming) return;
-                e.currentTarget.style.background = "var(--bg-hover)";
-                e.currentTarget.style.color = attachedImages.length ? "var(--accent)" : "var(--text)";
-              }}
-              onMouseLeave={(e) => {
-                e.currentTarget.style.background = "none";
-                e.currentTarget.style.color = attachedImages.length ? "var(--accent)" : "var(--text-muted)";
-              }}
-            >
-              <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
-                <rect x="3" y="3" width="18" height="18" rx="2" ry="2" />
-                <circle cx="8.5" cy="8.5" r="1.5" />
-                <polyline points="21 15 16 10 5 21" />
-              </svg>
-            </button>
+            {projectLabel && (
+              <div ref={projectDropdownRef} style={{ position: "relative", flexShrink: 0 }}>
+                <button
+                  type="button"
+                  className="chat-project-context"
+                  title={`${t("chat.switchProject")} · ${t("chat.currentProject", { path: projectPath ?? projectLabel })}`}
+                  aria-label={t("chat.currentProject", { path: projectPath ?? projectLabel })}
+                  aria-haspopup={projectOptions.length > 0 && onProjectChange ? "menu" : undefined}
+                  aria-expanded={projectOptions.length > 0 && onProjectChange ? projectDropdownOpen : undefined}
+                  onClick={() => {
+                    if (projectOptions.length > 0 && onProjectChange) setProjectDropdownOpen((open) => !open);
+                    else onSelectProject?.();
+                  }}
+                  disabled={!onSelectProject && !(projectOptions.length > 0 && onProjectChange)}
+                >
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                    <path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2Z" />
+                  </svg>
+                  <span>{projectLabel}</span>
+                </button>
+                {projectDropdownOpen && projectOptions.length > 0 && onProjectChange && (
+                  <div
+                    className="native-popover"
+                    role="menu"
+                    style={{
+                      position: "absolute",
+                      left: 0,
+                      bottom: "calc(100% + 6px)",
+                      zIndex: 500,
+                      minWidth: 220,
+                      maxWidth: 320,
+                      padding: 5,
+                    }}
+                  >
+                    {projectOptions.map((projectRoot) => {
+                      const label = getProjectLabel(projectRoot) ?? projectRoot;
+                      const isCurrent = projectRoot === projectPath;
+                      return (
+                        <button
+                          key={projectRoot}
+                          type="button"
+                          role="menuitem"
+                          onClick={() => {
+                            setProjectDropdownOpen(false);
+                            if (!isCurrent) onProjectChange(projectRoot);
+                          }}
+                          style={{
+                            display: "flex",
+                            alignItems: "center",
+                            gap: 8,
+                            width: "100%",
+                            minWidth: 0,
+                            padding: "7px 9px",
+                            border: 0,
+                            borderRadius: 6,
+                            background: isCurrent ? "var(--bg-selected)" : "transparent",
+                            color: isCurrent ? "var(--text)" : "var(--text-muted)",
+                            cursor: "pointer",
+                            textAlign: "left",
+                            fontSize: 12,
+                          }}
+                          onMouseEnter={(e) => {
+                            if (!isCurrent) e.currentTarget.style.background = "var(--bg-hover)";
+                          }}
+                          onMouseLeave={(e) => {
+                            if (!isCurrent) e.currentTarget.style.background = "transparent";
+                          }}
+                          title={projectRoot}
+                        >
+                          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                            <path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2Z" />
+                          </svg>
+                          <span style={{ minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{label}</span>
+                          {isCurrent && <span style={{ marginLeft: "auto", color: "var(--accent)" }}>✓</span>}
+                        </button>
+                      );
+                    })}
+                  </div>
+                )}
+              </div>
+            )}
             {/* Model selector — visible always, disabled during streaming */}
             {(modelOptions.length > 0 || currentName || modelError) && onModelChange && (
                 <div ref={dropdownRef} style={{ position: "relative", flex: isMobile ? "1 1 auto" : undefined, minWidth: 0 }}>
@@ -2104,7 +2122,7 @@ export const ChatInput = forwardRef<ChatInputHandle, Props>(function ChatInput({
                   })()}
                 </div>
             )}
-            <ContextUsageRing contextUsage={contextUsage} onOpenStats={onSessionStatsPanelOpen} />
+            <ContextUsageRing contextUsage={contextUsage} sessionStats={sessionStats} onOpenStats={onSessionStatsPanelOpen} />
             <ExtensionStatusBar statuses={extensionStatuses} />
           </div>
 
