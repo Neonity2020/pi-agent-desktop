@@ -204,7 +204,7 @@ function SourceCodeRenderer({ rows, stylesheet, useInlineStyles, wrapLines }: So
 
 function getFileApiUrl(
   filePath: string,
-  type: "read" | "download" | "meta" | "preview" | "watch",
+  type: "read" | "download" | "meta" | "preview" | "serve" | "watch",
   sourceSessionId?: string | null,
   params: Record<string, string | number | undefined> = {},
 ): string {
@@ -903,6 +903,7 @@ function TextFileViewer({ filePath, cwd, sourceSessionId, onOpenFile, onMentionL
   const [wrapLines, setWrapLines] = useState(false);
   const [watching, setWatching] = useState(false);
   const [reloadKey, setReloadKey] = useState(0);
+  const [previewReloadKey, setPreviewReloadKey] = useState(0);
   const esRef = useRef<EventSource | null>(null);
   const gitDiffRequestRef = useRef(0);
   const contentRef = useRef<HTMLDivElement | null>(null);
@@ -984,6 +985,7 @@ function TextFileViewer({ filePath, cwd, sourceSessionId, onOpenFile, onMentionL
     es.addEventListener("change", () => {
       void fetchContent(filePath);
       void fetchGitDiff(filePath);
+      setPreviewReloadKey((value) => value + 1);
     });
 
     es.addEventListener("error", () => {
@@ -1114,6 +1116,7 @@ function TextFileViewer({ filePath, cwd, sourceSessionId, onOpenFile, onMentionL
   const markdownDirectory = getFileDirectory(filePath);
   const lines = content.split("\n");
   const effectiveDisplayMode = isDeletedDiff ? "diff" : displayMode;
+  const htmlPreviewUrl = getFileApiUrl(filePath, "serve", sourceSessionId, { v: previewReloadKey });
   const displayModes: DisplayMode[] = isDeletedDiff
     ? ["diff"]
     : [
@@ -1197,10 +1200,10 @@ function TextFileViewer({ filePath, cwd, sourceSessionId, onOpenFile, onMentionL
           <DiffView patch={gitDiff.patch!} />
         ) : isHtml && effectiveDisplayMode === "preview" ? (
           <iframe
-            srcDoc={content}
-            sandbox=""
+            key={htmlPreviewUrl}
+            src={htmlPreviewUrl}
             style={{ width: "100%", height: "100%", border: "none", background: "var(--bg)" }}
-             title={t("i18n.htmlPreview")}
+            title={t("i18n.htmlPreview")}
           />
         ) : isMarkdown && effectiveDisplayMode === "preview" ? (
           <div
