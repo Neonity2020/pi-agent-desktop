@@ -2585,33 +2585,6 @@ html.dark .sidebar-view-switcher-thumb {
   margin: 0 auto;
 }
 
-.chat-empty-brand {
-  margin: 0 16px 16px !important;
-  font-family: var(--font-display) !important;
-}
-
-.chat-empty-brand-copy {
-  display: flex;
-  min-width: 0;
-  flex: 1;
-  flex-direction: column;
-  justify-content: center;
-}
-
-.chat-empty-brand-copy strong {
-  color: var(--text);
-  font-family: var(--font-display);
-  font-size: 20px;
-  font-weight: 650;
-  letter-spacing: -0.025em;
-}
-
-.chat-empty-brand-copy span {
-  margin-top: 2px;
-  color: var(--text-dim);
-  font-size: 12px;
-}
-
 .chat-window {
   background: var(--bg);
 }

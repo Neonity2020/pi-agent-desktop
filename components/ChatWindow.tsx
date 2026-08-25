@@ -13,7 +13,6 @@ import { useAgentSession, type AgentPhase, type NoticeItem } from "@/hooks/useAg
 import { useAudio } from "@/hooks/useAudio";
 import { useDragDrop } from "@/hooks/useDragDrop";
 import type { SessionStatsInfo } from "@/lib/pi-types";
-import { PRODUCT_NAME } from "@/lib/branding";
 import { importDroppedProjectFiles, partitionChatDroppedFiles } from "@/lib/chat-file-drop";
 import {
   captureScrollDistance,
@@ -249,7 +248,7 @@ export function ChatWindow({ session, newSessionCwd, onAgentEnd, onSessionCreate
     retryInfo, contextUsage, forkingEntryId,
     isCompacting, compactError, compactResult, displayModel: displayModelValue, sessionStats,
     slashCommands, slashCommandsLoading, queuedMessages,
-    notices, extensionDialog, extensionCustomUi, extensionStatuses, extensionWidgets, respondToExtensionUi, sendExtensionCustomInput,
+    notices, extensionDialog, extensionCustomUi, extensionWidgets, respondToExtensionUi, sendExtensionCustomInput,
     isAutoModelSelection,
     agentPhase,
     addNotice,
@@ -930,21 +929,6 @@ export function ChatWindow({ session, newSessionCwd, onAgentEnd, onSessionCreate
       {isEmptyNew ? (
         <div className="flex flex-1 flex-col items-center justify-center overflow-y-auto px-4 py-8">
           <div className="chat-empty-state w-full max-w-[820px]">
-            <div
-              className="chat-empty-brand mb-3"
-              style={{
-                display: "flex",
-                alignItems: "center",
-                justifyContent: "flex-start",
-                marginLeft: 16,
-                marginRight: 16,
-              }}
-            >
-              <div className="chat-empty-brand-copy">
-                <strong>{t("chat.emptyTitle")}</strong>
-                <span>{t("chat.emptySubtitle", { product: PRODUCT_NAME })}</span>
-              </div>
-            </div>
             <NoticeShelf notices={notices} align="right" />
             {chatInputElement}
           </div>

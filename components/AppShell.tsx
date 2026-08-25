@@ -44,6 +44,7 @@ import {
   getDefaultRightPanelWidth,
   getRightPanelMaxWidth,
   getSidebarMaxWidth,
+  MOBILE_MAX_WIDTH,
   RIGHT_PANEL_FALLBACK_WIDTH,
   RIGHT_PANEL_MAX_WIDTH,
   RIGHT_PANEL_MIN_WIDTH,
@@ -63,7 +64,11 @@ type AutoNameStatus =
   | { kind: "naming" }
   | { kind: "success" }
   | { kind: "error"; message: string };
- const TOP_BAR_ICON_BUTTON_SIZE = 36;
+const TOP_BAR_ICON_BUTTON_SIZE = 36;
+const FILE_TREE_DEFAULT_WIDTH = 300;
+const FILE_TREE_MIN_WIDTH = 220;
+const FILE_TREE_MAX_WIDTH = 520;
+const FILE_TREE_PREVIEW_MIN_WIDTH = 240;
 export function AppShell() {
   const router = useRouter();
   const searchParams = useSearchParams();
@@ -107,6 +112,7 @@ export function AppShell() {
   const windowDrag = useWindowDrag();
   const sidebarWidthRef = useRef(SIDEBAR_DEFAULT_WIDTH);
   const rightPanelWidthRef = useRef(RIGHT_PANEL_FALLBACK_WIDTH);
+  const fileTreeWidthRef = useRef(FILE_TREE_DEFAULT_WIDTH);
   const getResponsiveRightPanelWidth = useCallback(
     () => typeof window === "undefined"
       ? RIGHT_PANEL_FALLBACK_WIDTH
@@ -156,8 +162,40 @@ export function AppShell() {
     storageKey: "pi-right-panel-width",
     widthRef: rightPanelWidthRef,
   });
+  const getFileTreeMaxWidth = useCallback(
+    () => {
+      const availablePanelWidth = typeof window === "undefined"
+        ? rightPanelWidthRef.current
+        : window.innerWidth < MOBILE_MAX_WIDTH
+          ? window.innerWidth
+          : window.innerWidth < SPLIT_PANEL_MIN_WIDTH
+            ? Math.min(560, window.innerWidth - 48)
+            : rightPanelWidthRef.current;
+      return Math.max(
+        FILE_TREE_MIN_WIDTH,
+        Math.min(
+          FILE_TREE_MAX_WIDTH,
+          availablePanelWidth - FILE_TREE_PREVIEW_MIN_WIDTH,
+        ),
+      );
+    },
+    [],
+  );
+  const fileTreeResizer = useResizablePanel({
+    ariaLabel: translate("layout.resizeFileTree"),
+    cssVariable: "--file-tree-width",
+    defaultWidth: FILE_TREE_DEFAULT_WIDTH,
+    getMaxWidth: getFileTreeMaxWidth,
+    growthDirection: "left",
+    maxWidth: FILE_TREE_MAX_WIDTH,
+    minWidth: FILE_TREE_MIN_WIDTH,
+    storageKey: "pi-file-tree-width",
+    widthRef: fileTreeWidthRef,
+  });
   const reclampSidebarWidth = sidebarResizer.reclampWidth;
   const reclampRightPanelWidth = rightPanelResizer.reclampWidth;
+  const reclampFileTreeWidth = fileTreeResizer.reclampWidth;
+  const rightPanelWidth = rightPanelResizer.width;
   // On mobile the sidebar is an overlay drawer; hide it by default so the chat
   // is visible on load. Runs once the breakpoint resolves after hydration.
   useEffect(() => {
@@ -184,7 +222,8 @@ export function AppShell() {
     if (!rightPanelOpen) return;
     reclampSidebarWidth();
     reclampRightPanelWidth();
-  }, [reclampRightPanelWidth, reclampSidebarWidth, rightPanelOpen]);
+    reclampFileTreeWidth();
+  }, [reclampFileTreeWidth, reclampRightPanelWidth, reclampSidebarWidth, rightPanelOpen, rightPanelWidth]);
   const chatInputRef = useRef<ChatInputHandle | null>(null);
   const topBarRef = useRef<HTMLDivElement>(null);
   // Branch navigator state — populated by ChatWindow via onBranchDataChange
@@ -1704,7 +1743,7 @@ export function AppShell() {
         {/* Local files: preview on the left, project tree on the right. */}
         <div style={{ display: "flex", flex: 1, minHeight: 0 }}>
           {/* Preview column */}
-          <div style={{ flex: 1, minWidth: 0, display: "flex", flexDirection: "column", overflow: "hidden", borderRight: fileTreeOpen && activeCwd ? "1px solid var(--border)" : "none" }}>
+          <div style={{ flex: 1, minWidth: 0, display: "flex", flexDirection: "column", overflow: "hidden" }}>
             <div style={{ flex: 1, overflow: "hidden", paddingBottom: "env(safe-area-inset-bottom)" }}>
               {activeFileTab?.filePath ? (
                 <FileViewer
@@ -1735,7 +1774,20 @@ export function AppShell() {
           </div>
           {/* Explorer column — always-on project file tree */}
           {activeCwd && fileTreeOpen && (
-            <div style={{ width: 300, flexShrink: 0, display: "flex", flexDirection: "column", minWidth: 0 }}>
+            <>
+              <div
+                {...fileTreeResizer.separatorProps}
+                aria-controls="file-tree-panel"
+                className={`panel-resize-handle file-tree-resize-handle${fileTreeResizer.isResizing ? " is-resizing" : ""}`}
+                data-resize-handle="file-tree"
+                title={`${translate("layout.resizeFileTree")}: ${translate("layout.resizeHint")}`}
+              />
+              <div
+                ref={fileTreeResizer.panelRef}
+                id="file-tree-panel"
+                className="file-tree-panel"
+                style={{ "--file-tree-width": `${fileTreeResizer.width}px` } as React.CSSProperties}
+              >
               <div className="context-panel-files-toolbar">
                 <div className="context-panel-file-filter-wrap">
                   <input
@@ -1809,7 +1861,8 @@ export function AppShell() {
                   onChangesCountChange={setChangesCount}
                 />
               </div>
-            </div>
+              </div>
+            </>
           )}
         </div>
       </div>
