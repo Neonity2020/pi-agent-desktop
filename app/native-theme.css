@@ -2508,7 +2508,9 @@ html.dark .sidebar-view-switcher-thumb {
   min-height: 32px;
   min-width: 0;
   max-width: 100%;
-  overflow: hidden;
+  /* Dropdowns are rendered inside this row and open above it. Clipping the
+     row also clips their scrollable option panels. */
+  overflow: visible;
   padding: 0 3px;
 }
 

@@ -391,6 +391,20 @@ export function SessionSidebar({ selectedSessionId, onSelectSession, onNewSessio
     return match?.projectRoot ?? cwd;
   }, [worktreeState, allSessions]);
 
+  // Selecting a directory is also the explicit "add project" action. If the
+  // project was previously removed from the sidebar, make it visible again
+  // without touching any of the session files discovered for that directory.
+  const activateProject = useCallback((cwd: string) => {
+    const projectRoot = projectRootFor(cwd) ?? cwd;
+    setArchivedProjectRoots((previous) => {
+      if (!previous.has(projectRoot)) return previous;
+      const next = new Set(previous);
+      next.delete(projectRoot);
+      return next;
+    });
+    setSelectedCwd(cwd);
+  }, [projectRootFor]);
+
   // Notify parent only when the effective cwd actually changes (not when
   // projectRootFor identity changes due to session/worktree refreshes).
   const lastNotifiedCwdRef = useRef<string | null>(null);
@@ -791,11 +805,11 @@ export function SessionSidebar({ selectedSessionId, onSelectSession, onNewSessio
 
     try {
       const cwd = await selectProjectDirectoryNative(selectedCwd, homeDir);
-      if (cwd) setSelectedCwd(cwd);
+      if (cwd) activateProject(cwd);
     } catch (error) {
       console.error("Failed to select project folder:", error);
     }
-  }, [selectedCwd, homeDir]);
+  }, [selectedCwd, homeDir, activateProject]);
 
   const archiveProject = useCallback((projectRoot: string) => {
     setArchivedProjectRoots((prev) => {
@@ -1074,7 +1088,7 @@ export function SessionSidebar({ selectedSessionId, onSelectSession, onNewSessio
               selectedCwd={selectedCwd}
               selectedProject={selectedProject}
               homeDir={homeDir}
-              onSelectCwd={setSelectedCwd}
+              onSelectCwd={activateProject}
               variant="block"
             />
           </div>
@@ -1749,7 +1763,7 @@ export function SessionSidebar({ selectedSessionId, onSelectSession, onNewSessio
               selectedProject={selectedProject}
               homeDir={homeDir}
               onSelectCwd={(cwd) => {
-                setSelectedCwd(cwd);
+                activateProject(cwd);
                 setProjectPickerOpen(false);
               }}
               variant="block"
@@ -1763,6 +1777,7 @@ export function SessionSidebar({ selectedSessionId, onSelectSession, onNewSessio
 
 function SessionTreeItem({
   node,
+  depth = 0,
   selectedSessionId,
   runningSessionIds,
   unreadSessionIds,
@@ -1771,6 +1786,7 @@ function SessionTreeItem({
   onSessionDeleted,
 }: {
   node: SessionTreeNode;
+  depth?: number;
   selectedSessionId: string | null;
   runningSessionIds: Set<string>;
   unreadSessionIds: Set<string>;
@@ -1782,7 +1798,12 @@ function SessionTreeItem({
   const hasChildren = node.children.length > 0;
 
   return (
-    <div>
+    <div
+      className="session-tree-item"
+      data-session-depth={depth}
+      aria-level={depth + 1}
+      style={depth > 0 ? { marginLeft: depth * 14 } : undefined}
+    >
       <div style={{ position: "relative" }}>
         <SessionItem
           session={node.session}
@@ -1803,6 +1824,7 @@ function SessionTreeItem({
             <SessionTreeItem
               key={child.session.id}
               node={child}
+              depth={depth + 1}
               selectedSessionId={selectedSessionId}
               runningSessionIds={runningSessionIds}
               unreadSessionIds={unreadSessionIds}

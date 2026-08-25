@@ -11,9 +11,12 @@ import {
   isBase64ImageWithinLimits,
 } from "@/lib/image-attachments";
 import {
-  buildEntriesFromFiles, buildAtInsertText, extractAtQuery, filterFileEntries,
-  type AtQueryMatch, type FileIndexEntry,
+  buildEntriesFromFiles, buildAtInsertText, buildSessionMentionText, extractAtQuery, extractHashQuery,
+  filterFileEntries, filterSessionEntries,
+  type AtQueryMatch, type FileIndexEntry, type HashQueryMatch, type SessionMentionEntry,
 } from "@/lib/file-fuzzy";
+import { extractSessionReferenceLabels, SESSION_REFERENCE_PATTERN } from "@/lib/session-reference";
+import type { SessionInfo } from "@/lib/types";
 import { FolderIcon, getFileIcon } from "./FileIcons";
 import { useIsMobile } from "@/hooks/useIsMobile";
 import { useI18n } from "@/hooks/useI18n";
@@ -136,6 +139,52 @@ function getProjectLabel(projectPath: string | null | undefined): string | null 
   const normalized = projectPath?.replace(/[\\/]+$/, "");
   if (!normalized) return null;
   return normalized.split(/[\\/]/).pop() ?? normalized;
+}
+
+async function resolveSessionReferences(message: string, selectedTargets: ReadonlyMap<string, string>): Promise<string> {
+  const labels = extractSessionReferenceLabels(message);
+  if (labels.length === 0) return message;
+
+  const fallbackTargets = new Map<string, string>();
+  const missingLabels = labels.filter((label) => !selectedTargets.has(label));
+  if (missingLabels.length > 0) {
+    try {
+      const response = await fetch("/api/sessions");
+      if (response.ok) {
+        const data = await response.json() as { sessions?: SessionInfo[] };
+        for (const session of data.sessions ?? []) {
+          const name = session.name?.trim();
+          if (name && missingLabels.includes(name) && !fallbackTargets.has(name)) fallbackTargets.set(name, session.id);
+          if (!name && missingLabels.includes(session.firstMessage.trim()) && !fallbackTargets.has(session.firstMessage.trim())) {
+            fallbackTargets.set(session.firstMessage.trim(), session.id);
+          }
+        }
+      }
+    } catch {
+      // Keep unresolved tokens visible if the session list cannot be loaded.
+    }
+  }
+
+  const targetIds = labels
+    .map((label) => selectedTargets.get(label) ?? fallbackTargets.get(label))
+    .filter((id): id is string => Boolean(id));
+  const references = await Promise.all(targetIds.map(async (id) => {
+    try {
+      const response = await fetch(`/api/sessions/${encodeURIComponent(id)}/reference`);
+      if (!response.ok) return [id, ""] as const;
+      const data = await response.json() as { reference?: string };
+      return [id, data.reference ?? ""] as const;
+    } catch {
+      return [id, ""] as const;
+    }
+  }));
+  const byId = new Map(references);
+  return message.replace(SESSION_REFERENCE_PATTERN, (token, quotedLabel: string | undefined, plainLabel: string | undefined) => {
+    const label = quotedLabel ?? plainLabel;
+    if (!label) return token;
+    const id = selectedTargets.get(label) ?? fallbackTargets.get(label);
+    return id ? (byId.get(id) || token) : token;
+  });
 }
 
 function formatTokenCount(tokens: number): string {
@@ -418,11 +467,15 @@ export const ChatInput = forwardRef<ChatInputHandle, Props>(function ChatInput({
   const [atQuery, setAtQuery] = useState<AtQueryMatch | null>(null);
   const [atMenuOpen, setAtMenuOpen] = useState(false);
   const [atActiveIndex, setAtActiveIndex] = useState(0);
+  const [hashQuery, setHashQuery] = useState<HashQueryMatch | null>(null);
+  const [hashMenuOpen, setHashMenuOpen] = useState(false);
+  const [hashActiveIndex, setHashActiveIndex] = useState(0);
   const [historyMenuOpen, setHistoryMenuOpen] = useState(false);
   const [historyActiveIndex, setHistoryActiveIndex] = useState(0);
   const [fileIndex, setFileIndex] = useState<{ cwd: string; entries: FileIndexEntry[]; truncated: boolean } | null>(null);
   const [fileIndexLoading, setFileIndexLoading] = useState(false);
   const [atServerResult, setAtServerResult] = useState<{ cwd: string; query: string; matches: FileIndexEntry[] } | null>(null);
+  const [sessionIndex, setSessionIndex] = useState<{ entries: SessionMentionEntry[]; fetchedAt: number } | null>(null);
   const [skillDormancyState, setSkillDormancyState] = useState<{
     cwd: string;
     values: Record<string, boolean>;
@@ -444,9 +497,12 @@ export const ChatInput = forwardRef<ChatInputHandle, Props>(function ChatInput({
   const slashCommandsRequestedRef = useRef(false);
   const slashItemRefs = useRef<Array<HTMLButtonElement | null>>([]);
   const atItemRefs = useRef<Array<HTMLButtonElement | null>>([]);
+  const hashItemRefs = useRef<Array<HTMLButtonElement | null>>([]);
   const historyItemRefs = useRef<Array<HTMLButtonElement | null>>([]);
   const fileIndexMetaRef = useRef<{ cwd: string; fetchedAt: number } | null>(null);
   const fileIndexFetchingRef = useRef<string | null>(null);
+  const sessionIndexFetchingRef = useRef(false);
+  const sessionMentionTargetsRef = useRef(new Map<string, string>());
   const draftKeyRef = useRef(draftKey);
   const valueRef = useRef(value);
   const attachedImagesRef = useRef(attachedImages);
@@ -461,6 +517,7 @@ export const ChatInput = forwardRef<ChatInputHandle, Props>(function ChatInput({
       if (current.trim()) return;
       setValue(text);
       setAtQuery(null);
+      setHashQuery(null);
       requestAnimationFrame(() => {
         if (!ta) return;
         ta.focus();
@@ -475,6 +532,7 @@ export const ChatInput = forwardRef<ChatInputHandle, Props>(function ChatInput({
 
       setValue(getUserMessageText(message));
       setAtQuery(null);
+      setHashQuery(null);
       setHistoryMenuOpen(false);
       setAttachedImages((prev) => {
         prev.forEach(revokeImagePreview);
@@ -496,6 +554,7 @@ export const ChatInput = forwardRef<ChatInputHandle, Props>(function ChatInput({
       const combined = [text, current].filter((t) => t.trim()).join("\n\n");
       setValue(combined);
       setAtQuery(null);
+      setHashQuery(null);
       requestAnimationFrame(() => {
         if (!ta) return;
         ta.focus();
@@ -518,6 +577,7 @@ export const ChatInput = forwardRef<ChatInputHandle, Props>(function ChatInput({
       const newVal = before + sep + text + after;
       setValue(newVal);
       setAtQuery(null);
+      setHashQuery(null);
       requestAnimationFrame(() => {
         if (!ta) return;
         const pos = start + sep.length + text.length;
@@ -607,6 +667,7 @@ export const ChatInput = forwardRef<ChatInputHandle, Props>(function ChatInput({
   const clearInput = useCallback(() => {
     setValue("");
     setAtQuery(null);
+    setHashQuery(null);
     setHistoryMenuOpen(false);
     if (draftKey) clearDraft(draftKey);
     if (draftKeyRef.current && draftKeyRef.current !== draftKey) clearDraft(draftKeyRef.current);
@@ -639,6 +700,7 @@ export const ChatInput = forwardRef<ChatInputHandle, Props>(function ChatInput({
     draftKeyRef.current = draftKey;
     setValue(draft?.value ?? "");
     setAtQuery(null);
+    setHashQuery(null);
     setHistoryMenuOpen(false);
     setAttachedImages((prev) => {
       prev.forEach(revokeImagePreview);
@@ -671,7 +733,8 @@ export const ChatInput = forwardRef<ChatInputHandle, Props>(function ChatInput({
         return;
       }
     }
-    onSend(msg, attachedImages.length ? attachedImages : undefined);
+    const resolvedMessage = await resolveSessionReferences(msg, sessionMentionTargetsRef.current);
+    onSend(resolvedMessage, attachedImages.length ? attachedImages : undefined);
     clearInput();
   }, [value, attachedImages, isStreaming, onBuiltinCommand, onSend, clearInput, onAudioUnlock]);
 
@@ -719,12 +782,28 @@ export const ChatInput = forwardRef<ChatInputHandle, Props>(function ChatInput({
     setAtQuery(extractAtQuery(text.slice(0, pos)));
   }, [cwd]);
 
+  const updateHashQuery = useCallback((text: string, cursor: number | null) => {
+    if (!cwd) {
+      setHashQuery(null);
+      return;
+    }
+    const pos = cursor ?? text.length;
+    setHashQuery(extractHashQuery(text.slice(0, pos)));
+  }, [cwd]);
+
   const atQueryText = atQuery?.query ?? null;
-  const atLocalMatches: FileIndexEntry[] = React.useMemo(() => (
+  const atLocalFileMatches: FileIndexEntry[] = React.useMemo(() => (
     atQueryText !== null && fileIndex && fileIndex.cwd === cwd
-      ? filterFileEntries(fileIndex.entries, atQueryText)
+      ? filterFileEntries(fileIndex.entries, atQueryText, 12)
       : []
   ), [atQueryText, fileIndex, cwd]);
+
+  const hashQueryText = hashQuery?.query ?? null;
+  const hashMatches: SessionMentionEntry[] = React.useMemo(() => (
+    hashQueryText !== null && sessionIndex
+      ? filterSessionEntries(sessionIndex.entries, hashQueryText)
+      : []
+  ), [hashQueryText, sessionIndex]);
 
   // When the client index is truncated (repo larger than the index cap),
   // local filtering cannot see deep files, so queries are also ranked
@@ -754,7 +833,7 @@ export const ChatInput = forwardRef<ChatInputHandle, Props>(function ChatInput({
     && atServerResult !== null
     && atServerResult.cwd === cwd
     && atServerResult.query === atQueryText;
-  const atMatches: FileIndexEntry[] = serverResultInUse ? atServerResult.matches : atLocalMatches;
+  const atMatches: FileIndexEntry[] = serverResultInUse ? atServerResult.matches : atLocalFileMatches;
 
   // Open/reset the menu whenever the @token appears or changes (mirrors the
   // slash menu: Escape closes it, the next keystroke re-opens it).
@@ -768,6 +847,17 @@ export const ChatInput = forwardRef<ChatInputHandle, Props>(function ChatInput({
     setAtMenuOpen(true);
     setAtActiveIndex(0);
   }, [atTokenKey]);
+
+  const hashTokenKey = hashQuery === null ? null : `${hashQuery.start}:${hashQuery.quoted ? 1 : 0}:${hashQuery.query}`;
+  useEffect(() => {
+    if (hashTokenKey === null) {
+      setHashMenuOpen(false);
+      setHashActiveIndex(0);
+      return;
+    }
+    setHashMenuOpen(true);
+    setHashActiveIndex(0);
+  }, [hashTokenKey]);
 
   // Fetch the file index when the menu opens. The server caches per cwd for
   // ~10s, so re-opening refreshes cheaply; while typing nothing refetches.
@@ -799,6 +889,36 @@ export const ChatInput = forwardRef<ChatInputHandle, Props>(function ChatInput({
       });
   }, [atTokenActive, cwd]);
 
+  // Sessions use the # palette. Keep this list lightweight by
+  // using the existing session summary endpoint; full content is fetched only
+  // when a selected session mention is sent.
+  useEffect(() => {
+    if (!hashQuery || !cwd) return;
+    if (sessionIndex && Date.now() - sessionIndex.fetchedAt < 10_000) return;
+    if (sessionIndexFetchingRef.current) return;
+    sessionIndexFetchingRef.current = true;
+    fetch("/api/sessions")
+      .then((res) => {
+        if (!res.ok) throw new Error(`session index failed: ${res.status}`);
+        return res.json() as Promise<{ sessions?: SessionInfo[] }>;
+      })
+      .then((data) => {
+        const entries = (data.sessions ?? []).map((session): SessionMentionEntry => ({
+          kind: "session",
+          id: session.id,
+          name: session.name,
+          firstMessage: session.firstMessage,
+          modified: session.modified,
+          messageCount: session.messageCount,
+        }));
+        setSessionIndex({ entries, fetchedAt: Date.now() });
+      })
+      .catch(() => {})
+      .finally(() => {
+        sessionIndexFetchingRef.current = false;
+      });
+  }, [hashQuery, cwd, sessionIndex]);
+
   const applyAtCompletion = useCallback((entry: FileIndexEntry) => {
     if (!atQuery) return;
     const ta = textareaRef.current;
@@ -819,6 +939,7 @@ export const ChatInput = forwardRef<ChatInputHandle, Props>(function ChatInput({
     // end with a space (token closes, menu hides); directories end with "/"
     // before the caret (token stays open for drill-down into the directory).
     setAtQuery(extractAtQuery(newValue.slice(0, newPos)));
+    setHashQuery(extractHashQuery(newValue.slice(0, newPos)));
     requestAnimationFrame(() => {
       const el = textareaRef.current;
       if (!el) return;
@@ -828,6 +949,32 @@ export const ChatInput = forwardRef<ChatInputHandle, Props>(function ChatInput({
       el.style.height = `${Math.min(el.scrollHeight, 200)}px`;
     });
   }, [atQuery, value]);
+
+  const applyHashCompletion = useCallback((entry: SessionMentionEntry) => {
+    if (!hashQuery) return;
+    const ta = textareaRef.current;
+    const cursor = ta?.selectionStart ?? value.length;
+    const before = value.slice(0, hashQuery.start);
+    let after = value.slice(cursor);
+    if (hashQuery.quoted && after.startsWith('"')) after = after.slice(1);
+    const sessionDisplayName = entry.name?.trim() || entry.firstMessage.trim() || "Untitled session";
+    const visibleSessionName = sessionDisplayName.replace(/"/g, "'").replace(/\n/g, " ");
+    sessionMentionTargetsRef.current.set(visibleSessionName, entry.id);
+    const text = buildSessionMentionText(visibleSessionName);
+    const newValue = before + text + after;
+    const newPos = before.length + text.length;
+    setValue(newValue);
+    setHashQuery(extractHashQuery(newValue.slice(0, newPos)));
+    setAtQuery(extractAtQuery(newValue.slice(0, newPos)));
+    requestAnimationFrame(() => {
+      const el = textareaRef.current;
+      if (!el) return;
+      el.focus();
+      el.setSelectionRange(newPos, newPos);
+      el.style.height = "auto";
+      el.style.height = `${Math.min(el.scrollHeight, 200)}px`;
+    });
+  }, [hashQuery, value]);
 
   useEffect(() => {
     if (atActiveIndex >= atMatches.length) {
@@ -843,6 +990,21 @@ export const ChatInput = forwardRef<ChatInputHandle, Props>(function ChatInput({
     if (!atMenuOpen) return;
     atItemRefs.current[atActiveIndex]?.scrollIntoView({ block: "nearest", inline: "nearest" });
   }, [atActiveIndex, atMenuOpen]);
+
+  useEffect(() => {
+    hashItemRefs.current.length = hashMatches.length;
+  }, [hashMatches.length]);
+
+  useEffect(() => {
+    if (!hashMenuOpen) return;
+    hashItemRefs.current[hashActiveIndex]?.scrollIntoView({ block: "nearest", inline: "nearest" });
+  }, [hashActiveIndex, hashMenuOpen]);
+
+  useEffect(() => {
+    if (hashActiveIndex >= hashMatches.length) {
+      setHashActiveIndex(Math.max(0, hashMatches.length - 1));
+    }
+  }, [hashMatches.length, hashActiveIndex]);
 
   useEffect(() => {
     if (historyActiveIndex >= inputHistory.length) {
@@ -864,6 +1026,7 @@ export const ChatInput = forwardRef<ChatInputHandle, Props>(function ChatInput({
     setHistoryMenuOpen(false);
     setHistoryActiveIndex(0);
     setAtQuery(null);
+    setHashQuery(null);
     requestAnimationFrame(() => {
       const ta = textareaRef.current;
       if (!ta) return;
@@ -889,21 +1052,22 @@ export const ChatInput = forwardRef<ChatInputHandle, Props>(function ChatInput({
     });
   }, []);
 
-  const sendQueued = useCallback((mode: "steer" | "followup") => {
+  const sendQueued = useCallback(async (mode: "steer" | "followup") => {
     const msg = value.trim();
     if (!msg && !attachedImages.length) return;
     if (attachedImages.length) return;
     onAudioUnlock?.();
+    const resolvedMessage = await resolveSessionReferences(msg, sessionMentionTargetsRef.current);
     const streamingBehavior = mode === "steer" ? "steer" : "followUp";
     if (msg.startsWith("/") && onPromptWithStreamingBehavior) {
-      onPromptWithStreamingBehavior(msg, streamingBehavior, attachedImages.length ? attachedImages : undefined);
+      onPromptWithStreamingBehavior(resolvedMessage, streamingBehavior, attachedImages.length ? attachedImages : undefined);
       clearInput();
       return;
     }
     if (mode === "steer" && onSteer) {
-      onSteer(msg, attachedImages.length ? attachedImages : undefined);
+      onSteer(resolvedMessage, attachedImages.length ? attachedImages : undefined);
     } else if (mode === "followup" && onFollowUp) {
-      onFollowUp(msg, attachedImages.length ? attachedImages : undefined);
+      onFollowUp(resolvedMessage, attachedImages.length ? attachedImages : undefined);
     }
     clearInput();
   }, [value, attachedImages, onPromptWithStreamingBehavior, onSteer, onFollowUp, clearInput, onAudioUnlock]);
@@ -1023,6 +1187,29 @@ export const ChatInput = forwardRef<ChatInputHandle, Props>(function ChatInput({
 
       // @ file menu — skip while composing so IME candidate navigation
       // (arrows/Enter/Tab) is never intercepted.
+      if (hashMenuOpen && hashQuery !== null && !isComposing) {
+        if (e.key === "ArrowDown") {
+          e.preventDefault();
+          setHashActiveIndex((i) => Math.min(Math.max(0, hashMatches.length - 1), i + 1));
+          return;
+        }
+        if (e.key === "ArrowUp") {
+          e.preventDefault();
+          setHashActiveIndex((i) => Math.max(0, i - 1));
+          return;
+        }
+        if (e.key === "Escape") {
+          e.preventDefault();
+          setHashMenuOpen(false);
+          return;
+        }
+        if ((e.key === "Tab" || (e.key === "Enter" && !e.shiftKey)) && hashMatches[hashActiveIndex]) {
+          e.preventDefault();
+          applyHashCompletion(hashMatches[hashActiveIndex]);
+          return;
+        }
+      }
+
       if (atMenuOpen && atQuery !== null && !isComposing) {
         if (e.key === "ArrowDown") {
           e.preventDefault();
@@ -1050,6 +1237,7 @@ export const ChatInput = forwardRef<ChatInputHandle, Props>(function ChatInput({
         e.preventDefault();
         setSlashMenuOpen(false);
         setAtMenuOpen(false);
+        setHashMenuOpen(false);
         setHistoryActiveIndex(inputHistory.length - 1);
         setHistoryMenuOpen(true);
         return;
@@ -1073,7 +1261,7 @@ export const ChatInput = forwardRef<ChatInputHandle, Props>(function ChatInput({
         }
       }
     },
-    [isStreaming, onSteer, onFollowUp, onAbort, slashMenuOpen, slashQuery, displayedSlashCommands, slashActiveIndex, applySlashCommand, sendQueued, handleSend, getNextSlashIndex, atMenuOpen, atQuery, atMatches, atActiveIndex, applyAtCompletion, historyMenuOpen, inputHistory, historyActiveIndex, applyHistoryInput, value]
+    [isStreaming, onSteer, onFollowUp, onAbort, slashMenuOpen, slashQuery, displayedSlashCommands, slashActiveIndex, applySlashCommand, sendQueued, handleSend, getNextSlashIndex, hashMenuOpen, hashQuery, hashMatches, hashActiveIndex, applyHashCompletion, atMenuOpen, atQuery, atMatches, atActiveIndex, applyAtCompletion, historyMenuOpen, inputHistory, historyActiveIndex, applyHistoryInput, value]
   );
 
   const handleInput = useCallback(() => {
@@ -1619,6 +1807,86 @@ export const ChatInput = forwardRef<ChatInputHandle, Props>(function ChatInput({
               </div>
             </div>
           )}
+          {hashMenuOpen && hashQuery !== null && (() => {
+            const matchCountLabel = hashMatches.length === 1 ? t("chat.match") : t("chat.matches", { count: hashMatches.length });
+            return (
+              <div
+                style={{
+                  position: "absolute",
+                  left: 0,
+                  right: 0,
+                  bottom: "calc(100% + 8px)",
+                  zIndex: 121,
+                  background: "var(--bg)",
+                  border: "1px solid var(--border)",
+                  borderRadius: 8,
+                  boxShadow: "0 -6px 20px rgba(0,0,0,0.12)",
+                  overflow: "hidden",
+                  maxHeight: "min(48vh, 400px)",
+                }}
+              >
+                <div style={{
+                  padding: "8px 10px",
+                  borderBottom: "1px solid var(--border)",
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "space-between",
+                  gap: 8,
+                  fontSize: 11,
+                  color: "var(--text-dim)",
+                }}>
+                  <span>{sessionIndex ? t("chat.sessions", { label: matchCountLabel }) : t("chat.loadingSessions")}</span>
+                  <span style={{ fontFamily: "var(--font-mono)" }}>{t("chat.tabEnter")}</span>
+                </div>
+                <div style={{ maxHeight: "calc(min(48vh, 400px) - 34px)", overflowY: "auto", padding: 4 }}>
+                  {!sessionIndex ? (
+                    <div style={{ padding: "6px 8px", fontSize: 12, color: "var(--text-dim)" }}>{t("chat.loadingSessions")}</div>
+                  ) : hashMatches.length === 0 ? (
+                    <div style={{ padding: "6px 8px", fontSize: 12, color: "var(--text-dim)" }}>{t("chat.noMatchingSessions")}</div>
+                  ) : hashMatches.map((entry, index) => {
+                    const active = index === hashActiveIndex;
+                    const name = entry.name?.trim() || entry.firstMessage.trim() || t("chat.untitledSession");
+                    return (
+                      <button
+                        key={`session:${entry.id}`}
+                        ref={(node) => {
+                          hashItemRefs.current[index] = node;
+                        }}
+                        type="button"
+                        onMouseDown={(e) => {
+                          e.preventDefault();
+                          applyHashCompletion(entry);
+                        }}
+                        onMouseEnter={() => setHashActiveIndex(index)}
+                        style={{
+                          width: "100%",
+                          display: "flex",
+                          alignItems: "center",
+                          gap: 8,
+                          padding: "7px 8px",
+                          border: "none",
+                          borderRadius: 6,
+                          background: active ? "var(--bg-selected)" : "none",
+                          color: "var(--text)",
+                          cursor: "pointer",
+                          textAlign: "left",
+                          fontSize: 12.5,
+                        }}
+                      >
+                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                          <path d="M21 15a4 4 0 0 1-4 4H8l-5 3V7a4 4 0 0 1 4-4h10a4 4 0 0 1 4 4z" />
+                        </svg>
+                        <span style={{ minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                          <span style={{ display: "block", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{name}</span>
+                          <span style={{ display: "block", color: "var(--text-dim)", fontSize: 10, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{entry.firstMessage}</span>
+                        </span>
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+            );
+          })()}
           {atMenuOpen && atQuery !== null && (() => {
             const indexLoading = fileIndexLoading && (!fileIndex || fileIndex.cwd !== cwd);
              const matchCountLabel = atMatches.length === 1 ? t("chat.match") : t("chat.matches", { count: atMatches.length });
@@ -1656,9 +1924,7 @@ export const ChatInput = forwardRef<ChatInputHandle, Props>(function ChatInput({
                   }}
                 >
                   <span>
-                    {indexLoading
-                       ? t("chat.loadingFiles")
-                       : t("chat.files", { label: matchCountLabel, hint: truncatedHint })}
+                    {indexLoading ? t("chat.loadingFiles") : t("chat.files", { label: matchCountLabel, hint: truncatedHint })}
                   </span>
                    <span style={{ fontFamily: "var(--font-mono)" }}>{t("chat.tabEnter")}</span>
                 </div>
@@ -1741,10 +2007,12 @@ export const ChatInput = forwardRef<ChatInputHandle, Props>(function ChatInput({
               setValue(e.target.value);
               setHistoryMenuOpen(false);
               updateAtQuery(e.target.value, e.target.selectionStart);
+              updateHashQuery(e.target.value, e.target.selectionStart);
             }}
             onSelect={(e) => {
               const el = e.currentTarget;
               updateAtQuery(el.value, el.selectionStart);
+              updateHashQuery(el.value, el.selectionStart);
             }}
             onKeyDown={handleKeyDown}
             onCompositionStart={() => {
@@ -1755,6 +2023,7 @@ export const ChatInput = forwardRef<ChatInputHandle, Props>(function ChatInput({
               lastCompositionEndAtRef.current = Date.now();
               const el = e.currentTarget;
               updateAtQuery(el.value, el.selectionStart);
+              updateHashQuery(el.value, el.selectionStart);
             }}
             onInput={handleInput}
             onPaste={handlePaste}
