@@ -2506,6 +2506,9 @@ html.dark .sidebar-view-switcher-thumb {
 .chat-composer-controls {
   margin-top: 0 !important;
   min-height: 32px;
+  min-width: 0;
+  max-width: 100%;
+  overflow: hidden;
   padding: 0 3px;
 }
 
