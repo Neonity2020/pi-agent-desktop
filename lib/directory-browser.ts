@@ -81,3 +81,21 @@ export async function listDirectories(directory: string): Promise<BrowsableDirec
     .filter((entry): entry is BrowsableDirectory => entry !== null)
     .sort((left, right) => left.name.localeCompare(right.name));
 }
+/** True for EACCES/EPERM — a read/write denial (POSIX modes or macOS TCC). */
+export function isPermissionError(error: unknown): boolean {
+  return (
+    typeof error === "object" &&
+    error !== null &&
+    "code" in error &&
+    ((error as NodeJS.ErrnoException).code === "EACCES" ||
+      (error as NodeJS.ErrnoException).code === "EPERM")
+  );
+}
+
+/** Actionable, bilingual message for a directory the process may not read. */
+export function directoryPermissionMessage(directory: string): string {
+  return (
+    `No permission to access "${directory}". ` +
+    `无法访问 "${directory}":没有权限。请在 macOS「系统设置 → 隐私与安全性」中允许 Pi Agent 访问,或检查文件夹读写权限后重试。`
+  );
+}

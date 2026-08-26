@@ -1,8 +1,9 @@
 import { NextResponse } from "next/server";
-import { statSync, type Stats } from "fs";
+import { readdirSync, statSync, type Stats } from "fs";
 import { userHome } from "@/lib/user-home";
 import { isAbsolute, resolve } from "path";
 import { allowFileRoot } from "@/lib/file-access";
+import { directoryPermissionMessage, isPermissionError } from "@/lib/directory-browser";
 
 function normalizeCwd(cwd: string): string {
   if (cwd === "~") return userHome();
@@ -25,12 +26,30 @@ export async function POST(req: Request) {
     let stat: Stats;
     try {
       stat = statSync(normalizedCwd);
-    } catch {
+    } catch (error) {
+      // macOS TCC denies stat of protected folders (Desktop/Documents/Downloads)
+      // with EPERM — that is a permission problem, not a missing path.
+      if (isPermissionError(error)) {
+        return NextResponse.json({ error: directoryPermissionMessage(cwd) }, { status: 403 });
+      }
       return NextResponse.json({ error: `Directory does not exist: ${cwd}` }, { status: 400 });
     }
 
     if (!stat.isDirectory()) {
       return NextResponse.json({ error: `Path is not a directory: ${cwd}` }, { status: 400 });
+    }
+
+    // Probe read access so a permission-denied folder is rejected at selection
+    // time instead of failing later (file tree, git status, session reads).
+    // accessSync only checks mode bits — it does not exercise macOS TCC, so
+    // the probe must actually readdir.
+    try {
+      readdirSync(normalizedCwd);
+    } catch (error) {
+      if (isPermissionError(error)) {
+        return NextResponse.json({ error: directoryPermissionMessage(cwd) }, { status: 403 });
+      }
+      return NextResponse.json({ error: `Directory cannot be read: ${cwd}` }, { status: 400 });
     }
 
     allowFileRoot(normalizedCwd);
