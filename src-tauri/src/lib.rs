@@ -512,6 +512,98 @@ fn write_ui_prefs(app: &AppHandle, prefs: &serde_json::Value) -> Result<(), Stri
     fs::write(path, raw).map_err(|error| error.to_string())
 }
 
+/// The build's version (from Cargo.toml), known at compile time.
+const APP_VERSION: &str = env!("CARGO_PKG_VERSION");
+
+/// Path to a small JSON file recording the version that last ran successfully.
+fn last_version_path(app: &AppHandle) -> Result<PathBuf, String> {
+    let dir = app
+        .path()
+        .app_config_dir()
+        .map_err(|error| error.to_string())?;
+    Ok(dir.join("last-version.json"))
+}
+
+fn read_last_version(app: &AppHandle) -> Option<String> {
+    let path = last_version_path(app).ok()?;
+    let raw = fs::read_to_string(&path).ok()?;
+    let value: serde_json::Value = serde_json::from_str(&raw).ok()?;
+    value.get("version").and_then(|v| v.as_str()).map(str::to_string)
+}
+
+fn write_last_version(app: &AppHandle) {
+    if let Ok(path) = last_version_path(app) {
+        if let Some(parent) = path.parent() {
+            let _ = fs::create_dir_all(parent);
+        }
+        let raw = serde_json::json!({ "version": APP_VERSION });
+        if let Ok(body) = serde_json::to_string_pretty(&raw) {
+            let _ = fs::write(path, body);
+        }
+    }
+}
+
+/// Clear webview disk caches whose entries are hashed by build (Next.js asset
+/// chunks, WebKit HTTP cache, WebView2 partition cache). Stale entries from a
+/// previous version still resolve to the old hashed filenames and 404 after an
+/// upgrade, which on WebKitGTK surfaces as a hard "This page couldn't load"
+/// error page on the next navigation.
+///
+/// Only the cache directories are touched — `localStorage`, sessions, and
+/// user settings live elsewhere and are preserved.
+fn clear_webview_caches(app: &AppHandle) {
+    // Linux WebKitGTK: ~/.local/share/<identifier>/WebKitCache
+    #[cfg(target_os = "linux")]
+    if let Ok(data_dir) = app.path().app_data_dir() {
+        let webkit_cache = data_dir.join("WebKitCache");
+        if webkit_cache.is_dir() {
+            let _ = fs::remove_dir_all(&webkit_cache);
+        }
+    }
+    // Windows WebView2: cache partition under the app data dir.
+    #[cfg(target_os = "windows")]
+    if let Ok(data_dir) = app.path().app_data_dir() {
+        let webview2 = data_dir.join("EBWebView");
+        if webview2.is_dir() {
+            for entry in fs::read_dir(&webview2).into_iter().flatten().flatten() {
+                let cache_dir = entry.path().join("Cache");
+                if cache_dir.is_dir() {
+                    let _ = fs::remove_dir_all(&cache_dir);
+                }
+            }
+        }
+    }
+    // macOS WKWebView: per-origin caches under ~/Library/WebKit/<identifier>.
+    #[cfg(target_os = "macos")]
+    if let Ok(config_dir) = app.path().app_config_dir() {
+        // app_config_dir on macOS is ~/Library/Application Support/<identifier>;
+        // WKWebView WebsiteKit caches live under ~/Library/WebKit/<bundle-id>.
+        if let Some(home) = dirs_home_dir() {
+            let wk = home.join("Library/WebKit/com.abcwyc.pi-agent");
+            if wk.is_dir() {
+                let _ = fs::remove_dir_all(&wk);
+            }
+        }
+        let _ = config_dir; // suppress unused on non-mac
+    }
+}
+
+#[cfg(target_os = "macos")]
+fn dirs_home_dir() -> Option<PathBuf> {
+    env::var_os("HOME").map(PathBuf::from)
+}
+
+/// Detect a version change since the last successful launch and, when one is
+/// found, clear stale webview caches before the window loads. The current
+/// version is recorded *after* the window is built so a crash during startup
+/// keeps flagging a cache clear on the next run.
+fn reconcile_webview_cache_for_version(app: &AppHandle) {
+    let last = read_last_version(app);
+    if last.as_deref() != Some(APP_VERSION) {
+        clear_webview_caches(app);
+    }
+}
+
 fn read_stored_theme(app: &AppHandle) -> Option<&'static str> {
     read_ui_prefs(app)
         .get("theme")
@@ -1218,7 +1310,14 @@ pub fn run() {
             let (url, server) = start_development_server(app.handle())?;
 
             app.manage(server);
+            // Clear stale webview caches when the app version changed since the
+            // last successful launch (fixes WebKitGTK loading stale hashed
+            // Next.js assets after an upgrade).
+            reconcile_webview_cache_for_version(app.handle());
             build_window(app.handle(), url)?;
+            // Record the current version only after the window built cleanly,
+            // so a startup crash keeps the cache clear flagged on relaunch.
+            write_last_version(app.handle());
 
             #[cfg(target_os = "linux")]
             build_linux_tray(app)?;

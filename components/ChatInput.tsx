@@ -1228,10 +1228,26 @@ export const ChatInput = forwardRef<ChatInputHandle, Props>(function ChatInput({
   const handlePaste = useCallback((e: React.ClipboardEvent) => {
     const items = Array.from(e.clipboardData?.items ?? []);
     const imageItems = items.filter((item) => item.type.startsWith("image/"));
-    if (!imageItems.length) return;
-    e.preventDefault();
-    const files = imageItems.map((item) => item.getAsFile()).filter((f): f is File => f !== null);
-    processImageFiles(files);
+    if (imageItems.length) {
+      e.preventDefault();
+      const files = imageItems.map((item) => item.getAsFile()).filter((f): f is File => f !== null);
+      processImageFiles(files);
+      return;
+    }
+    // WebKitGTK (Linux) delivers an empty clipboardData.items list on paste
+    // even when the clipboard holds an image (WebKit bug 320303). Fall back to
+    // the Tauri clipboard-manager readImage() only in the desktop shell, and
+    // only when the browser gave us nothing — so plain-text paste is untouched.
+    if (items.length === 0) {
+      e.preventDefault();
+      void import("@/lib/desktop-native").then(({ readClipboardImageFileNative }) =>
+        readClipboardImageFileNative(),
+      ).then((file) => {
+        if (file) processImageFiles([file]);
+      }).catch(() => {
+        /* ignore — nothing to paste */
+      });
+    }
   }, [processImageFiles]);
 
   useEffect(() => {
@@ -2466,13 +2482,18 @@ export const ChatInput = forwardRef<ChatInputHandle, Props>(function ChatInput({
                   </svg>
                   {(!isMobile || controlsMenuOpen) && <span style={{ whiteSpace: "nowrap" }}>{thinkingDisplayLabel}</span>}
                 </button>
-                {thinkingDropdownOpen && (
+                {thinkingDropdownOpen && (() => {
+                  const vh = typeof window !== "undefined" ? window.visualViewport?.height ?? window.innerHeight : 800;
+                  const maxH = Math.max(120, vh * 0.6);
+                  return (
                   <div className="native-popover" style={{
                     position: "absolute", bottom: "calc(100% + 6px)", right: 0,
                     zIndex: 100, background: "var(--bg)", border: "1px solid var(--border)",
                     borderRadius: 8, boxShadow: "0 -4px 16px rgba(0,0,0,0.10)",
                     overflow: "hidden", minWidth: 180,
+                    maxHeight: maxH, display: "flex", flexDirection: "column",
                   }}>
+                    <div style={{ minHeight: 0, overflowY: "auto" }}>
                     {THINKING_LEVELS.filter((lvl) => {
                       if (!availableThinkingLevels) return true;
                       if (lvl === "auto") return true;
@@ -2511,8 +2532,10 @@ export const ChatInput = forwardRef<ChatInputHandle, Props>(function ChatInput({
                         </button>
                       );
                     })}
+                    </div>
                   </div>
-                )}
+                  );
+                })()}
               </div>
             )}
             {!isStreaming && onToolPresetChange && (
@@ -2552,13 +2575,18 @@ export const ChatInput = forwardRef<ChatInputHandle, Props>(function ChatInput({
                   </svg>
                   {(!isMobile || controlsMenuOpen) && <span style={{ whiteSpace: "nowrap" }}>{toolPresetLabel}</span>}
                 </button>
-                {toolDropdownOpen && (
+                {toolDropdownOpen && (() => {
+                  const vh = typeof window !== "undefined" ? window.visualViewport?.height ?? window.innerHeight : 800;
+                  const maxH = Math.max(120, vh * 0.6);
+                  return (
                   <div className="native-popover" style={{
                     position: "absolute", bottom: "calc(100% + 6px)", right: 0,
                     zIndex: 100, background: "var(--bg)", border: "1px solid var(--border)",
                     borderRadius: 8, boxShadow: "0 -4px 16px rgba(0,0,0,0.10)",
                     overflow: "hidden", minWidth: 120,
+                    maxHeight: maxH, display: "flex", flexDirection: "column",
                   }}>
+                    <div style={{ minHeight: 0, overflowY: "auto" }}>
                     {TOOL_PRESETS.map((lvl) => {
                       const preset = TOOL_PRESET_MAP[lvl];
                       const isActive = (toolPreset ?? "default") === preset;
@@ -2588,8 +2616,10 @@ export const ChatInput = forwardRef<ChatInputHandle, Props>(function ChatInput({
                         </button>
                       );
                     })}
+                    </div>
                   </div>
-                )}
+                  );
+                })()}
               </div>
             )}
 

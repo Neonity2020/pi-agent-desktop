@@ -352,4 +352,45 @@ export async function relaunchAppNative(): Promise<void> {
   await relaunch();
 }
 
+/**
+ * Read an image from the system clipboard as a PNG File.
+ *
+ * WebKitGTK (Linux) delivers an empty `clipboardData.items` list on paste even
+ * when the clipboard holds an image (WebKit bug 320303), so the browser-side
+ * paste handler cannot recover it. This native fallback uses the Tauri
+ * clipboard-manager `readImage()` command, converts the raw RGBA bytes to a
+ * PNG via an offscreen canvas, and returns a File the rest of the paste path
+ * can consume exactly like a browser-provided image item.
+ *
+ * Returns null when there is no image in the clipboard or the runtime is not
+ * a Tauri desktop shell.
+ */
+export async function readClipboardImageFileNative(): Promise<File | null> {
+  if (!isTauriDesktop()) return null;
+  try {
+    const { readImage } = await import("@tauri-apps/plugin-clipboard-manager");
+    const img = await readImage();
+    const rgba = await img.rgba();
+    const { width, height } = await img.size();
+    if (!width || !height || rgba.byteLength < width * height * 4) return null;
+    // RGBA -> PNG via an offscreen canvas.
+    const canvas = document.createElement("canvas");
+    canvas.width = width;
+    canvas.height = height;
+    const ctx = canvas.getContext("2d");
+    if (!ctx) return null;
+    const imageData = new ImageData(new Uint8ClampedArray(rgba), width, height);
+    ctx.putImageData(imageData, 0, 0);
+    const blob = await new Promise<Blob | null>((resolve) =>
+      canvas.toBlob(resolve, "image/png"),
+    );
+    if (!blob) return null;
+    const stamp = new Date().toISOString().replace(/[-:.]/g, "").slice(0, 14);
+    return new File([blob], `clipboard-${stamp}.png`, { type: "image/png" });
+  } catch {
+    // Clipboard has no image or read failed — not an error worth surfacing.
+    return null;
+  }
+}
+
 export { isTauriDesktop };

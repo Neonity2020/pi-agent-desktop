@@ -1601,7 +1601,24 @@ export function SessionSidebar({ selectedSessionId, onSelectSession, onNewSessio
             ? t("sidebar.loading")
             : trimmedSessionQuery
               ? t("sidebar.noMatchingSessions")
-              : t("sidebar.noProjects")}
+              : (
+                <div className="sidebar-empty-action">
+                  <span className="sidebar-empty-text">{t("sidebar.noProjects")}</span>
+                  <button
+                    type="button"
+                    className="sidebar-empty-add"
+                    onClick={() => void handleAddProject()}
+                    title={t("sidebar.addProject")}
+                    aria-label={t("sidebar.addProject")}
+                  >
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                      <line x1="12" y1="5" x2="12" y2="19" />
+                      <line x1="5" y1="12" x2="19" y2="12" />
+                    </svg>
+                    <span>{t("sidebar.addProject")}</span>
+                  </button>
+                </div>
+              )}
         </div>
       ) : (
         <div className="sidebar-project-tree" onScroll={handleListScroll}>
