@@ -103,31 +103,35 @@ jobs:
           tagName: v__VERSION__
           releaseName: pi-agent-desktop v__VERSION__
           releaseBody: |
-            ## Pi Agent Desktop 0.4.1
+            ## Pi Agent Desktop 0.4.2
 
-            This release includes the latest desktop UI improvements and layout refinements.
+            This release fixes several reported issues and improves directory-permission error handling.
 
-            ### Improvements
+            ### Fixes
 
-            - Refined the file-tree panel and resizing behavior.
-            - Improved panel alignment, borders, and responsive layout behavior.
-            - Bundles the Pi engine at 0.84.3 and pi-web at 0.8.7.
+            - Empty-state sidebar offers "Add project" and New Session works on first run (#43).
+            - Reasoning-level and tool-preset dropdowns scroll instead of overflowing the viewport (#37).
+            - Image paste works again on the Linux desktop via a clipboard-manager fallback for WebKitGTK (#40).
+            - The webview disk cache is cleared after an upgrade, so stale hashed assets no longer 404 after updating (#41).
+            - Directory pickers surface permission errors (EACCES/EPERM, macOS TCC) with actionable messages and reject unreadable folders at selection time.
 
-            Bundled components: pi 0.84.3, pi-web 0.8.7.
+            Bundled components: pi 0.84.4, pi-web 0.8.7.
 
             ---
 
-            ## Pi Agent Desktop 0.4.1
+            ## Pi Agent Desktop 0.4.2
 
-            本次发布包含最新的桌面端界面改进与布局优化。
+            本次发布修复了多个已报告问题，并改进了目录权限错误提示。
 
-            ### 改进
+            ### 修复
 
-            - 优化文件树面板及其宽度调整交互。
-            - 改进面板对齐、边框和响应式布局表现。
-            - 内置 Pi 引擎 0.84.3，pi-web 0.8.7。
+            - 空状态侧边栏提供"添加项目"入口，首次运行即可新建会话（#43）。
+            - 推理级别与工具预设下拉菜单在条目过多时可滚动查看，不再超出视口（#37）。
+            - 修复 Linux 桌面端无法粘贴图片的问题（WebKitGTK 剪贴板兼容，回退到剪贴板管理器）（#40）。
+            - 升级后自动清理 WebView 磁盘缓存，避免旧哈希资源 404 导致页面无法加载（#41）。
+            - 目录选择器对权限错误（EACCES/EPERM、macOS 隐私授权）给出可操作的提示，并在选择时即拒绝不可读的文件夹。
 
-            内置组件版本：pi 0.84.3、pi-web 0.8.7。
+            内置组件版本：pi 0.84.4、pi-web 0.8.7。
           releaseDraft: true
           prerelease: false
           uploadUpdaterJson: true
