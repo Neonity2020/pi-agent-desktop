@@ -460,6 +460,17 @@ export function AppShell() {
     if (currentProject === newProject) {
       return;
     }
+    // Clicking a session of another project also moves the effective cwd —
+    // as a side effect of opening it, not as a project-picker switch. The
+    // click has already committed, so `selectedSession` here IS the clicked
+    // session: keep it open and only drop file tabs left over from the
+    // previous project, instead of blanking the chat into a new session.
+    if (selectedSession && (selectedSession.projectRoot ?? selectedSession.cwd) === newProject) {
+      setFileTabs([]);
+      setActiveFileTabId(null);
+      setRightPanelOpen(false);
+      return;
+    }
     // Close any session that belongs to a different project — it no longer
     // matches the selected project directory.
     setSelectedSession(null);
