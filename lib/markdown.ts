@@ -314,8 +314,42 @@ function normalizeInlineLatexMath(line: string): string {
   );
 }
 
-export const markdownRemarkPlugins: ReactMarkdownOptions["remarkPlugins"] = [remarkGfm, remarkMath];
-export const markdownPreviewRemarkPlugins: ReactMarkdownOptions["remarkPlugins"] = [remarkGfm, remarkMath];
+/**
+ * GFM autolink literals greedily include non-ASCII characters (e.g. CJK) as part of a URL,
+ * so `https://foo.com/x中文` becomes one giant link. Split trailing non-ASCII runs back out
+ * into text after the link node.
+ */
+function remarkTrimAutolinkTrailingUnicode() {
+  return (tree: unknown) => {
+    const walk = (node: any) => {
+      if (!node || typeof node !== "object" || !Array.isArray(node.children)) return;
+      for (let i = 0; i < node.children.length; i++) {
+        const child = node.children[i];
+        if (
+          child?.type === "link" &&
+          Array.isArray(child.children) &&
+          child.children.length === 1 &&
+          child.children[0].type === "text" &&
+          child.children[0].value === child.url
+        ) {
+          const match = /[^\x00-\x7F]/u.exec(child.url);
+          if (match && match.index > 0) {
+            const kept = child.url.slice(0, match.index);
+            const tail = child.url.slice(match.index);
+            child.url = kept;
+            child.children[0].value = kept;
+            node.children.splice(i + 1, 0, { type: "text", value: tail });
+          }
+        }
+        walk(child);
+      }
+    };
+    walk(tree);
+  };
+}
+
+export const markdownRemarkPlugins: ReactMarkdownOptions["remarkPlugins"] = [remarkGfm, remarkMath, remarkTrimAutolinkTrailingUnicode];
+export const markdownPreviewRemarkPlugins: ReactMarkdownOptions["remarkPlugins"] = [remarkGfm, remarkMath, remarkTrimAutolinkTrailingUnicode];
 
 export const markdownRehypePlugins: ReactMarkdownOptions["rehypePlugins"] = [
   rehypeRaw,
