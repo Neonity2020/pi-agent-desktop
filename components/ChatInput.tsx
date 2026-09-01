@@ -3,6 +3,7 @@
 import React, { useRef, useState, useCallback, useEffect, useImperativeHandle, forwardRef, KeyboardEvent } from "react";
 import type { BuiltinSlashCommandResult, CompactResultInfo, QueuedMessages, SlashCommandInfo } from "@/hooks/useAgentSession";
 import type { SkillsResponse } from "@/lib/api-types";
+import type { ModelScopeWarning } from "@/lib/model-scope-warnings";
 import type { TextContent, UserMessage } from "@/lib/types";
 import { clearDraft, getDraft, setDraft, type ChatDraftImage } from "@/lib/draft-store";
 import {
@@ -50,7 +51,11 @@ interface Props {
   modelList?: { id: string; name: string; provider: string }[];
   modelError?: string | null;
   /** Diagnostics from resolving `enabledModels`, e.g. a pattern that matched nothing. */
-  modelScopeWarnings?: string[];
+  modelScopeWarnings?: ModelScopeWarning[];
+  /** Dismiss the current scope warnings for this conversation only. */
+  onDismissModelScopeWarnings?: () => void;
+  /** Open the provider/auth configuration modal (offered for unauthenticated-provider warnings). */
+  onOpenModelsConfig?: () => void;
   onModelChange?: (provider: string, modelId: string) => void;
   onCompact?: () => void;
   onAbortCompaction?: () => void;
@@ -315,7 +320,21 @@ function QueuedMessageRow({ kind, label, text }: { kind: "steer" | "follow-up"; 
   );
 }
 
-function ModelNoticeBanner({ tone, title, body }: { tone: "error" | "warning"; title: string; body: string }) {
+function ModelNoticeBanner({
+  tone,
+  title,
+  body,
+  action,
+  onDismiss,
+  dismissLabel,
+}: {
+  tone: "error" | "warning";
+  title: string;
+  body: string;
+  action?: React.ReactNode;
+  onDismiss?: () => void;
+  dismissLabel?: string;
+}) {
   const color = tone === "error" ? "239,68,68" : "234,179,8";
   return (
     <div
@@ -352,8 +371,40 @@ function ModelNoticeBanner({ tone, title, body }: { tone: "error" | "warning"; t
         <line x1="12" y1="9" x2="12" y2="13" />
         <line x1="12" y1="17" x2="12.01" y2="17" />
       </svg>
-      <div style={{ minWidth: 0 }}>
-        <div style={{ fontWeight: 600 }}>{title}</div>
+      <div style={{ minWidth: 0, flex: 1 }}>
+        <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+          <div style={{ fontWeight: 600, flex: 1 }}>{title}</div>
+          {action}
+          {onDismiss && (
+            <button
+              type="button"
+              onClick={onDismiss}
+              aria-label={dismissLabel}
+              title={dismissLabel}
+              style={{
+                flexShrink: 0,
+                display: "inline-flex",
+                alignItems: "center",
+                justifyContent: "center",
+                width: 18,
+                height: 18,
+                padding: 0,
+                border: "none",
+                borderRadius: 4,
+                background: "transparent",
+                color: "inherit",
+                cursor: "pointer",
+                fontSize: 13,
+                lineHeight: 1,
+              }}
+            >
+              <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" aria-hidden="true">
+                <line x1="5" y1="5" x2="19" y2="19" />
+                <line x1="19" y1="5" x2="5" y2="19" />
+              </svg>
+            </button>
+          )}
+        </div>
         <div style={{ whiteSpace: "pre-wrap", overflowWrap: "anywhere" }}>{body}</div>
       </div>
     </div>
@@ -366,20 +417,69 @@ export function ModelErrorBanner({ error }: { error?: string | null }) {
   return <ModelNoticeBanner tone="error" title={t("chat.modelError")} body={error} />;
 }
 
-/** Surfaces `enabledModels` patterns that matched nothing, so a typo is visible (#307). */
-export function ModelScopeWarningBanner({ warnings }: { warnings?: string[] }) {
+/**
+ * Surfaces `enabledModels` patterns that matched nothing (#307) and patterns
+ * whose provider has no usable credentials (#48), with an in-conversation
+ * dismiss so a stale warning never becomes permanent wallpaper.
+ */
+export function ModelScopeWarningBanner({
+  warnings,
+  onDismiss,
+  dismissLabel,
+  onOpenModelsConfig,
+}: {
+  warnings?: ModelScopeWarning[];
+  onDismiss?: () => void;
+  dismissLabel?: string;
+  onOpenModelsConfig?: () => void;
+}) {
+  const { t } = useI18n();
   if (!warnings || warnings.length === 0) return null;
+  const mentionsUnauthenticated = warnings.some(
+    (warning) => warning.code === "unauthenticated-provider" && (warning.unauthenticatedProviders?.length ?? 0) > 0,
+  );
+  const body = warnings.map((warning) => {
+    if (warning.code === "unauthenticated-provider" && (warning.unauthenticatedProviders?.length ?? 0) > 0) {
+      return t("chat.modelScopeUnauthenticated", {
+        pattern: warning.pattern,
+        providers: (warning.unauthenticatedProviders ?? []).join(", "),
+      });
+    }
+    return warning.message;
+  }).join("\n");
   return (
     <ModelNoticeBanner
       tone="warning"
-      title={warnings.length > 1 ? "Model scope warnings" : "Model scope warning"}
-      body={warnings.join("\n")}
+      title={warnings.length > 1 ? t("chat.modelScopeWarnings") : t("chat.modelScopeWarning")}
+      body={body}
+      action={mentionsUnauthenticated && onOpenModelsConfig ? (
+        <button
+          type="button"
+          onClick={onOpenModelsConfig}
+          style={{
+            flexShrink: 0,
+            padding: "2px 8px",
+            border: `1px solid rgba(234,179,8,0.45)`,
+            borderRadius: 5,
+            background: "transparent",
+            color: "inherit",
+            cursor: "pointer",
+            fontSize: 11,
+            lineHeight: 1.4,
+            whiteSpace: "nowrap",
+          }}
+        >
+          {t("chat.modelScopeConfigure")}
+        </button>
+      ) : undefined}
+      onDismiss={onDismiss}
+      dismissLabel={dismissLabel}
     />
   );
 }
 
 export const ChatInput = forwardRef<ChatInputHandle, Props>(function ChatInput({
-  onSend, onAbort, onSteer, onFollowUp, isStreaming, model, isAutoModelSelection, modelNames, modelList, modelError, modelScopeWarnings, onModelChange,
+  onSend, onAbort, onSteer, onFollowUp, isStreaming, model, isAutoModelSelection, modelNames, modelList, modelError, modelScopeWarnings, onDismissModelScopeWarnings, onOpenModelsConfig, onModelChange,
   onCompact, onAbortCompaction, isCompacting, compactError, compactResult, toolPreset, onToolPresetChange,
   thinkingLevel, onThinkingLevelChange, availableThinkingLevels, thinkingLevelMap,
   retryInfo, queuedMessages, inputHistory = [], onRecallQueue,
@@ -1396,7 +1496,12 @@ export const ChatInput = forwardRef<ChatInputHandle, Props>(function ChatInput({
     >
       <div className="chat-composer-wrap" style={{ maxWidth: 820, margin: "0 auto" }}>
         <ModelErrorBanner error={modelError} />
-        <ModelScopeWarningBanner warnings={modelScopeWarnings} />
+        <ModelScopeWarningBanner
+          warnings={modelScopeWarnings}
+          onDismiss={onDismissModelScopeWarnings}
+          dismissLabel={t("chat.modelScopeDismiss")}
+          onOpenModelsConfig={onOpenModelsConfig}
+        />
         {/* Queued steering / follow-up messages (delivered by pi on upcoming turns) */}
         {((queuedMessages?.steering.length ?? 0) + (queuedMessages?.followUp.length ?? 0)) > 0 && (
           <div style={{
