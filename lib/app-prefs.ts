@@ -17,6 +17,7 @@ export const APP_PREF_KEYS = {
   closeQuits: "pi-desktop-close-quits",
   notifyOnComplete: "pi-desktop-notify-on-complete",
   chatDrafts: "pi-chat-drafts-v1",
+  diffViewMode: "pi-diff-view-mode",
   /** Last open session / cwd / file tabs for desktop cold-start restore. */
   workspace: "pi-workspace-v1",
 } as const;
