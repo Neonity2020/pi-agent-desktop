@@ -42,6 +42,8 @@ interface Props {
   onOpenFile?: (filePath: string) => void;
   /** Fired after non-image drops are copied into the session cwd (so the explorer can refresh). */
   onProjectFilesImported?: () => void;
+  /** Open the provider/auth configuration modal (offered by the scope-warning banner). */
+  onOpenModelsConfig?: () => void;
 }
 
 function phaseLabel(phase: AgentPhase, t: (key: string, params?: Record<string, string | number>) => string): string | null {
@@ -218,7 +220,7 @@ function ProcessDetailsGroup({ messageCount, toolCallCount, children, t }: { mes
   );
 }
 
-export function ChatWindow({ session, newSessionCwd, onAgentEnd, onSessionCreated, onSessionForked, modelsRefreshKey, chatInputRef, onBranchDataChange, onSystemPromptChange, onSessionStatsChange, onSessionStatsPanelOpen, onContextUsageChange, onSelectProject, projectOptions, onProjectChange, onOpenFile, onProjectFilesImported }: Props) {
+export function ChatWindow({ session, newSessionCwd, onAgentEnd, onSessionCreated, onSessionForked, modelsRefreshKey, chatInputRef, onBranchDataChange, onSystemPromptChange, onSessionStatsChange, onSessionStatsPanelOpen, onContextUsageChange, onSelectProject, projectOptions, onProjectChange, onOpenFile, onProjectFilesImported, onOpenModelsConfig }: Props) {
   const { t } = useI18n();
   const { soundEnabled, onSoundToggle, playDoneSound, unlockAudio } = useAudio();
   // Wrap onAgentEnd to play the completion sound. This is more reliable than
@@ -257,6 +259,7 @@ export function ChatWindow({ session, newSessionCwd, onAgentEnd, onSessionCreate
     lastUserMsgRef, promptAnchorActive,
     handleSend, handleAbort, handleFork, handleNavigate, handleModelChange,
     handleCompact, handleSteer, handleFollowUp, handlePromptWithStreamingBehavior, handleAbortCompaction,
+    dismissModelScopeWarnings,
     handleRecallQueue,
     handleBuiltinSlashCommand, retryLoad,
     handleToolPresetChange, handleThinkingLevelChange, loadSlashCommands, scrollToBottom, scrollUserMsgToTop,
@@ -822,6 +825,8 @@ export function ChatWindow({ session, newSessionCwd, onAgentEnd, onSessionCreate
       modelList={modelList}
       modelError={modelError}
       modelScopeWarnings={modelScopeWarnings}
+      onDismissModelScopeWarnings={dismissModelScopeWarnings}
+      onOpenModelsConfig={onOpenModelsConfig}
       onModelChange={handleModelChange}
       onCompact={session || isNew ? handleCompact : undefined}
       onAbortCompaction={handleAbortCompaction}
