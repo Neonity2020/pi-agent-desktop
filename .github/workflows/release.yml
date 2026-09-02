@@ -103,33 +103,59 @@ jobs:
           tagName: v__VERSION__
           releaseName: pi-agent-desktop v__VERSION__
           releaseBody: |
-            ## Pi Agent Desktop 0.4.2
+            ## Pi Agent Desktop 0.4.3
 
-            This release fixes several reported issues and improves directory-permission error handling.
+            This release fixes model discovery for proxy/gateway providers,
+            clarifies model-scope warnings, and adds a unified diff view option.
 
             ### Fixes
 
-            - Empty-state sidebar offers "Add project" and New Session works on first run (#43).
-            - Reasoning-level and tool-preset dropdowns scroll instead of overflowing the viewport (#37).
-            - Image paste works again on the Linux desktop via a clipboard-manager fallback for WebKitGTK (#40).
-            - The webview disk cache is cleared after an upgrade, so stale hashed assets no longer 404 after updating (#41).
-            - Directory pickers surface permission errors (EACCES/EPERM, macOS TCC) with actionable messages and reject unreadable folders at selection time.
+            - Custom-provider model import works against inference endpoints: a
+              Base URL ending in `/chat/completions` (or `/messages`, etc.) is
+              trimmed before requesting `/models`, and Anthropic/Google discovery
+              now pages 100 at a time with cursor pagination instead of a
+              hard-coded `limit=1000` that gateways reject.
+            - `enabledModels` patterns for a provider with no credentials are
+              reported as "provider is not authenticated" (with a Configure
+              providers shortcut) instead of a misleading "no models match"
+              typo warning; the warning banner can now be dismissed per
+              conversation (#48).
+            - GFM autolinks no longer swallow trailing CJK text, so
+              `https://example.com/x` followed by Chinese punctuation links only
+              the URL (#50).
+            - Clicking a session that belongs to another project keeps it open
+              instead of blanking the chat into a new composer.
+
+            ### Improvements
+
+            - Settings → Appearance adds a Split / Unified toggle for how
+              edit-tool diffs render, persisted per user (#52).
 
             Bundled components: pi 0.84.4, pi-web 0.8.7.
 
             ---
 
-            ## Pi Agent Desktop 0.4.2
+            ## Pi Agent Desktop 0.4.3
 
-            本次发布修复了多个已报告问题，并改进了目录权限错误提示。
+            本次发布修复了代理/网关类 provider 的模型发现，优化了模型范围警告的提示，
+            并新增统一 diff 视图选项。
 
             ### 修复
 
-            - 空状态侧边栏提供"添加项目"入口，首次运行即可新建会话（#43）。
-            - 推理级别与工具预设下拉菜单在条目过多时可滚动查看，不再超出视口（#37）。
-            - 修复 Linux 桌面端无法粘贴图片的问题（WebKitGTK 剪贴板兼容，回退到剪贴板管理器）（#40）。
-            - 升级后自动清理 WebView 磁盘缓存，避免旧哈希资源 404 导致页面无法加载（#41）。
-            - 目录选择器对权限错误（EACCES/EPERM、macOS 隐私授权）给出可操作的提示，并在选择时即拒绝不可读的文件夹。
+            - 自定义 provider 的模型导入可用于推理端点：Base URL 以
+              `/chat/completions`（或 `/messages` 等）结尾时会先剥离再请求
+              `/models`；Anthropic/Google 的发现改为每页 100 条并跟随游标翻页，
+              不再使用网关会拒绝的 `limit=1000`。
+            - 指向无凭据 provider 的 `enabledModels` 规则会提示「provider 未认证」
+              （并附「去配置」入口），而不是误导性的「没有匹配的模型」拼写警告；
+              警告 banner 现在可按对话关闭（#48）。
+            - GFM 自动链接不再吞掉结尾的中文文本，`https://example.com/x` 后面接
+              中文标点时只会链接 URL 部分（#50）。
+            - 点击属于其它项目的会话时会保持其打开，而不是把对话清空为新会话。
+
+            ### 改进
+
+            - 设置 → 外观 新增「并排 / 统一」diff 展示切换，按用户持久化（#52）。
 
             内置组件版本：pi 0.84.4、pi-web 0.8.7。
           releaseDraft: true
