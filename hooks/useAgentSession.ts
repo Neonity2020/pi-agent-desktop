@@ -18,19 +18,13 @@ import { rememberScrollPosition, sessionScrollTops } from "@/lib/scroll-memory";
 import { applyAssistantMessageEvent, type ClientAssistantMessageEvent } from "@/lib/streaming-message";
 import { modelScopeWarningKey, type ModelScopeWarning } from "@/lib/model-scope-warnings";
 import type { SessionStatsInfo } from "@/lib/pi-types";
+import {
+  cacheSessionData,
+  getCachedSessionData,
+  type CachedSessionData,
+} from "@/lib/session-data-cache";
 
-export interface SessionData {
-  sessionId: string;
-  filePath: string;
-  tree: SessionTreeNode[];
-  leafId: string | null;
-  context: {
-    messages: AgentMessage[];
-    entryIds: string[];
-    thinkingLevel: string;
-    model: { provider: string; modelId: string } | null;
-  };
-}
+export type SessionData = CachedSessionData;
 
 interface StreamingState {
   isStreaming: boolean;
@@ -529,6 +523,7 @@ export function useAgentSession(opts: UseAgentSessionOptions) {
     setAppliedIdentity(sessionIdentity);
 
     if (!isPromotion) {
+      const cachedSession = session?.id ? getCachedSessionData(session.id) : null;
       // Save the departing session's scroll position now, while the DOM still
       // shows it. The resets below empty the message list in this same commit,
       // and the browser clamps scrollTop to 0 before any effect cleanup runs —
@@ -555,10 +550,10 @@ export function useAgentSession(opts: UseAgentSessionOptions) {
       completionScrollAllowedRef.current = true;
       optimisticUserMessageKeyRef.current = null;
       dispatch({ type: "reset" });
-      setData(null);
-      setActiveLeafId(null);
-      setMessages([]);
-      setEntryIds([]);
+      setData(cachedSession);
+      setActiveLeafId(cachedSession?.leafId ?? null);
+      setMessages(cachedSession?.context.messages ?? []);
+      setEntryIds(cachedSession?.context.entryIds ?? []);
       setError(null);
       setAgentRunning(false);
       setBashRunning(false);
@@ -581,7 +576,7 @@ export function useAgentSession(opts: UseAgentSessionOptions) {
       setSessionStatsOverride(null);
       setDismissedScopeWarningKeys(new Set());
       setSlashCommands([]);
-      setLoading(Boolean(session?.id));
+      setLoading(Boolean(session?.id) && !cachedSession);
       if (isNew) {
         setToolPreset("default");
         setThinkingLevel("auto");
@@ -636,7 +631,9 @@ export function useAgentSession(opts: UseAgentSessionOptions) {
     const isCurrent = () => sessionIdRef.current === sid;
     let messagesLoaded = false;
     try {
-      if (showLoading) setLoading(true);
+      // A warmed payload is already on screen. Refresh it in the background
+      // instead of replacing it with a one-frame loading layout.
+      if (showLoading && !getCachedSessionData(sid)) setLoading(true);
       const params = new URLSearchParams({ deferThinking: "1", deferMedia: "1" });
       // This request owns the "loading session" state, so it must not be able
       // to hang: nothing else clears that state, and the retry affordance only
@@ -657,6 +654,7 @@ export function useAgentSession(opts: UseAgentSessionOptions) {
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
       const d = await res.json() as SessionData;
       if (!isCurrent()) return null;
+      cacheSessionData(sid, d);
       setData(d);
       setActiveLeafId(d.leafId);
       setMessages(d.context.messages);

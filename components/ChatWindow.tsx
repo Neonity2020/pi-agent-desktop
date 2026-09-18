@@ -501,7 +501,6 @@ export function ChatWindow({ session, newSessionCwd, onAgentEnd, onSessionCreate
 
   const isEmptyNew = isNew && !loading && !error && messages.length === 0 && !streamState.isStreaming && !sessionBusy;
   const messageCwd = session?.cwd ?? newSessionCwd ?? undefined;
-  const chatViewportRef = useRef<HTMLDivElement | null>(null);
   const bottomComposerRef = useRef<HTMLDivElement | null>(null);
   const [bottomComposerHeight, setBottomComposerHeight] = useState(0);
   const bottomComposerHeightRef = useRef(0);
@@ -555,23 +554,6 @@ export function ChatWindow({ session, newSessionCwd, onAgentEnd, onSessionCreate
       }
     };
   }, [error, isEmptyNew, loading, scrollContainerRef, scrollToBottom]);
-
-  useLayoutEffect(() => {
-    const viewport = chatViewportRef.current;
-    const scrollContainer = scrollContainerRef.current;
-    if (!viewport || !scrollContainer) return;
-
-    // Measure once when the chat viewport is established. WebKit can report a
-    // transiently different clientWidth when content changes from the loading
-    // state to an overflowing session; following that value would visibly
-    // nudge the fixed composer even though its viewport did not move.
-    const inset = Math.max(0, scrollContainer.offsetWidth - scrollContainer.clientWidth);
-    viewport.style.setProperty("--chat-scrollbar-inset", `${inset}px`);
-
-    return () => {
-      viewport.style.removeProperty("--chat-scrollbar-inset");
-    };
-  }, [isEmptyNew, scrollContainerRef]);
 
   useLayoutEffect(() => {
     if (!agentRunning || !promptAnchorActive) {
@@ -962,14 +944,14 @@ export function ChatWindow({ session, newSessionCwd, onAgentEnd, onSessionCreate
       ) : (
       <>
       {/* Composer overlays the scrollport; trailing spacer clears the last lines. */}
-      <div ref={chatViewportRef} className="relative flex min-w-0 flex-1 flex-col overflow-hidden">
+      <div className="relative flex min-w-0 flex-1 flex-col overflow-hidden">
       <div className="relative flex min-w-0 flex-1 overflow-hidden">
         <div
           style={{
             position: "absolute",
             top: 12,
             left: 0,
-            right: "var(--chat-scrollbar-inset, 0px)",
+            right: 0,
             zIndex: 40,
             padding: `0 ${CHAT_COLUMN_PADDING}px`,
             pointerEvents: "none",
@@ -982,7 +964,7 @@ export function ChatWindow({ session, newSessionCwd, onAgentEnd, onSessionCreate
         <div
           ref={scrollContainerRef}
           className="min-w-0 flex-1 overflow-x-hidden overflow-y-auto pt-4"
-          style={{ scrollbarGutter: "stable" }}
+          style={{ scrollbarGutter: "stable both-edges" }}
         >
           <div style={{ minWidth: 0, padding: `0 ${CHAT_COLUMN_PADDING}px` }}>
             <div style={{ width: "100%", minWidth: 0, maxWidth: 820, margin: "0 auto" }}>
@@ -1069,7 +1051,6 @@ export function ChatWindow({ session, newSessionCwd, onAgentEnd, onSessionCreate
       <div
         ref={bottomComposerRef}
         className="absolute inset-x-0 bottom-0 z-20"
-        style={{ right: "var(--chat-scrollbar-inset, 0px)" }}
       >
         <div
           style={{

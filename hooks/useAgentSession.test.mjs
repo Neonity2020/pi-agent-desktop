@@ -146,15 +146,12 @@ test("sizes the message tail from the rendered bottom composer", () => {
   assert.match(chatWindowSource, /bottomComposerScrollFrameRef = useRef<number \| null>\(null\)/);
   assert.match(chatWindowSource, /distanceFromBottom <= Math\.abs\(nextHeight - previousHeight\) \+ 1/);
   assert.match(chatWindowSource, /scrollToBottom\("auto"\)/);
-  assert.match(chatWindowSource, /ref=\{bottomComposerRef\}[\s\S]*?className="absolute inset-x-0 bottom-0 z-20"[\s\S]*?--chat-scrollbar-inset/);
+  assert.match(chatWindowSource, /ref=\{bottomComposerRef\}[\s\S]*?className="absolute inset-x-0 bottom-0 z-20"/);
   assert.match(chatWindowSource, /height: bottomComposerHeight/);
 });
 
 test("keeps the message column and composer on the scrollport axis", () => {
-  assert.match(chatWindowSource, /scrollbarGutter: "stable"/);
-  assert.doesNotMatch(chatWindowSource, /scrollbarGutter: "stable both-edges"/);
-  assert.match(chatWindowSource, /scrollContainer\.offsetWidth - scrollContainer\.clientWidth/);
-  assert.match(chatWindowSource, /--chat-scrollbar-inset/);
-  assert.doesNotMatch(chatWindowSource, /new ResizeObserver\(syncScrollbarInset\)/);
+  assert.match(chatWindowSource, /scrollbarGutter: "stable both-edges"/);
+  assert.doesNotMatch(chatWindowSource, /--chat-scrollbar-inset/);
   assert.doesNotMatch(nativeThemeSource, /width: calc\(100% - 16px\)/);
 });

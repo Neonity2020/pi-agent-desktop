@@ -13,6 +13,7 @@ import { revealItemInDirNative } from "@/lib/desktop-native";
 import { isTauriDesktop } from "@/lib/desktop-updater";
 import { getDesktopPlatform, type DesktopPlatform } from "@/lib/desktop-window";
 import { useWindowDrag } from "./desktop";
+import { prefetchSessionData } from "@/lib/session-data-cache";
 interface Props {
   selectedSessionId: string | null;
   onSelectSession: (session: SessionInfo, isRestore?: boolean) => void;
@@ -769,9 +770,15 @@ export function SessionSidebar({ selectedSessionId, onSelectSession, onNewSessio
   // Done on the click path (not via the selectedCwd prop sync) so it also
   // works when the prop value won't change — e.g. re-clicking the already
   // open session after manually switching worktrees.
+  const sessionSelectionIdRef = useRef(0);
   const handleSelectSessionFromList = useCallback((s: SessionInfo) => {
-    if (s.cwd) setSelectedCwd(s.cwd);
-    onSelectSession(s);
+    const selectionId = ++sessionSelectionIdRef.current;
+    void prefetchSessionData(s.id).then(() => {
+      // A second click supersedes an earlier, slower session read.
+      if (sessionSelectionIdRef.current !== selectionId) return;
+      if (s.cwd) setSelectedCwd(s.cwd);
+      onSelectSession(s);
+    });
   }, [onSelectSession]);
 
   const handleNewSession = useCallback((cwdOverride?: string) => {
@@ -2015,7 +2022,13 @@ function SessionItem({
     <div
       className={`session-item${isSelected ? " is-selected" : ""}${isRunning ? " is-running" : ""}${isUnread ? " is-unread" : ""}`}
       onClick={confirmDelete || renaming ? undefined : onClick}
-      onMouseEnter={() => setHovered(true)}
+      onMouseEnter={() => {
+        setHovered(true);
+        if (!isRunning && !isSelected) prefetchSessionData(session.id);
+      }}
+      onPointerDown={() => {
+        if (!isRunning && !isSelected) prefetchSessionData(session.id);
+      }}
       onMouseLeave={() => { setHovered(false); }}
       style={{
         height: ITEM_HEIGHT,
