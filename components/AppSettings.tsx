@@ -11,7 +11,6 @@ import {
   APP_VERSION_DISPLAY,
   PRODUCT_NAME,
 } from "@/lib/branding";
-import { compareAppVersions } from "@/lib/app-updates";
 import { APP_PREF_KEYS, getPrefBool, setPrefBool } from "@/lib/app-prefs";
 import {
   installLatestDesktopRelease,
@@ -139,7 +138,6 @@ function MetaChip({
 function VersionChip({
   currentValue,
   latestValue,
-  versionsMatch,
   updateAvailable,
   href,
   title,
@@ -151,7 +149,6 @@ function VersionChip({
 }: {
   currentValue: string;
   latestValue: string;
-  versionsMatch: boolean;
   updateAvailable: boolean;
   href: string;
   title: string;
@@ -171,35 +168,33 @@ function VersionChip({
       style={metaChipStyle(updateAvailable)}
       onClick={(event) => handleExternalLinkClick(event, href)}
     >
-      {versionsMatch ? (
-        <>
-          <span style={{ opacity: 0.72, fontWeight: 500 }}>{versionLabel}</span>
-          <span>{currentValue}</span>
-        </>
-      ) : (
+      {updateAvailable ? (
         <>
           <span style={{ opacity: 0.72, fontWeight: 500 }}>{currentLabel}</span>
           <span>{currentValue}</span>
           <span aria-hidden="true" style={{ width: 1, height: 13, background: "currentColor", opacity: 0.2 }} />
-          <span style={{ opacity: updateAvailable ? 0.9 : 0.72, fontWeight: 500 }}>{latestLabel}</span>
-          <span style={{ color: updateAvailable ? "var(--accent)" : undefined, fontWeight: updateAvailable ? 800 : undefined }}>
+          <span style={{ opacity: 0.9, fontWeight: 500 }}>{latestLabel}</span>
+          <span style={{ color: "var(--accent)", fontWeight: 800 }}>
             {latestValue}
           </span>
-          {updateAvailable ? (
-            <span
-              style={{
-                padding: "1px 5px",
-                borderRadius: 999,
-                background: "var(--accent)",
-                color: "var(--bg-panel)",
-                fontSize: 9,
-                fontWeight: 800,
-                whiteSpace: "nowrap",
-              }}
-            >
-              {upgradeAvailableLabel}
-            </span>
-          ) : null}
+          <span
+            style={{
+              padding: "1px 5px",
+              borderRadius: 999,
+              background: "var(--accent)",
+              color: "var(--bg-panel)",
+              fontSize: 9,
+              fontWeight: 800,
+              whiteSpace: "nowrap",
+            }}
+          >
+            {upgradeAvailableLabel}
+          </span>
+        </>
+      ) : (
+        <>
+          <span style={{ opacity: 0.72, fontWeight: 500 }}>{versionLabel}</span>
+          <span>{currentValue}</span>
         </>
       )}
       <span aria-hidden="true">↗</span>
@@ -313,13 +308,9 @@ export function AppSettings({ onClose }: { onClose: () => void }) {
 
   const currentVersion = appRelease?.currentVersion ?? APP_VERSION;
   const currentVersionText = `v${currentVersion === APP_VERSION ? APP_VERSION_DISPLAY : currentVersion}`;
-  const versionsMatch = Boolean(
-    appRelease?.latestVersion
-      && compareAppVersions(currentVersion, appRelease.latestVersion) === 0,
-  );
-  const versionAriaLabel = versionsMatch
-    ? `${t("appSettings.version")}: ${currentVersionText}. ${statusText}`
-    : `${t("appSettings.currentVersion")}: ${currentVersionText}. ${t("appSettings.latestRelease")}: ${latestReleaseText}. ${statusText}`;
+  const versionAriaLabel = updateAvailable
+    ? `${t("appSettings.currentVersion")}: ${currentVersionText}. ${t("appSettings.latestRelease")}: ${latestReleaseText}. ${statusText}`
+    : `${t("appSettings.version")}: ${currentVersionText}. ${statusText}`;
 
   const handleUpgrade = async () => {
     if (!canUpgrade) return;
@@ -372,7 +363,7 @@ export function AppSettings({ onClose }: { onClose: () => void }) {
           boxShadow: "0 22px 70px rgba(0,0,0,0.32)",
         }}
       >
-        <header className="native-modal-header" style={{ display: "flex", alignItems: "flex-start", gap: 14, padding: "20px 22px 17px", borderBottom: "1px solid var(--border)" }}>
+        <header className="native-modal-header" style={{ display: "flex", alignItems: "flex-start", gap: 14, padding: "18px 22px 16px", borderBottom: "1px solid var(--border)" }}>
           <div style={{ minWidth: 0, flex: 1 }}>
             <h2 className="native-modal-title" id="app-settings-title" style={{ margin: 0, fontSize: 18, lineHeight: 1.25 }}>
               {PRODUCT_NAME}
@@ -382,44 +373,6 @@ export function AppSettings({ onClose }: { onClose: () => void }) {
               <br />
               {t("appSettings.taglineDetails")}
             </div>
-            <div style={{ marginTop: 10, display: "flex", alignItems: "center", gap: 9, flexWrap: "wrap" }}>
-              <MetaChip
-                label={t("appSettings.repository")}
-                value={APP_REPOSITORY}
-                href={APP_REPOSITORY_URL}
-                title={t("appSettings.openRepository")}
-                ariaLabel={`${t("appSettings.repository")}: ${APP_REPOSITORY}`}
-              />
-              <VersionChip
-                currentValue={currentVersionText}
-                latestValue={latestReleaseText}
-                versionsMatch={versionsMatch}
-                updateAvailable={updateAvailable}
-                href={appRelease?.releaseUrl ?? APP_RELEASES_URL}
-                title={statusText}
-                ariaLabel={versionAriaLabel}
-                versionLabel={t("appSettings.version")}
-                currentLabel={t("appSettings.currentVersion")}
-                latestLabel={t("appSettings.latestRelease")}
-                upgradeAvailableLabel={t("appSettings.upgradeAvailable")}
-              />
-              {(updateAvailable || upgradeProgress) && (
-                <button
-                  className="native-button native-button-primary"
-                  type="button"
-                  disabled={!canUpgrade}
-                  onClick={() => void handleUpgrade()}
-                  style={{ minWidth: 112 }}
-                >
-                  {upgradeLabel}
-                </button>
-              )}
-            </div>
-            {upgradeError && (
-              <div className="native-inline-alert is-error" role="alert" style={{ marginTop: 9 }}>
-                {upgradeError}
-              </div>
-            )}
           </div>
           <button
             className="native-modal-close"
@@ -435,6 +388,67 @@ export function AppSettings({ onClose }: { onClose: () => void }) {
         </header>
 
         <div style={{ overflowY: "auto", padding: "18px 22px 20px", display: "flex", flexDirection: "column", gap: 12 }}>
+          <div className="native-settings-card" style={sectionCardStyle}>
+            <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", gap: 12 }}>
+              <div>
+                <div style={sectionTitleStyle}>{t("appSettings.updatesSection")}</div>
+                <div style={sectionHintStyle}>{statusText}</div>
+              </div>
+              {(updateAvailable || upgradeProgress) && (
+                <button
+                  className="native-button native-button-primary"
+                  type="button"
+                  disabled={!canUpgrade}
+                  onClick={() => void handleUpgrade()}
+                  style={{ minWidth: 92, flexShrink: 0 }}
+                >
+                  {upgradeLabel}
+                </button>
+              )}
+            </div>
+            <div style={{ marginTop: 10, display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
+              <VersionChip
+                currentValue={currentVersionText}
+                latestValue={latestReleaseText}
+                updateAvailable={updateAvailable}
+                href={appRelease?.releaseUrl ?? APP_RELEASES_URL}
+                title={statusText}
+                ariaLabel={versionAriaLabel}
+                versionLabel={t("appSettings.version")}
+                currentLabel={t("appSettings.currentVersion")}
+                latestLabel={t("appSettings.latestRelease")}
+                upgradeAvailableLabel={t("appSettings.upgradeAvailable")}
+              />
+              <MetaChip
+                label={t("appSettings.repository")}
+                value={APP_REPOSITORY}
+                href={APP_REPOSITORY_URL}
+                title={t("appSettings.openRepository")}
+                ariaLabel={`${t("appSettings.repository")}: ${APP_REPOSITORY}`}
+              />
+            </div>
+            {updateAvailable && (
+              <div style={{ marginTop: 8, color: "var(--text-dim)", fontSize: 11, lineHeight: 1.5 }}>
+                {t("appSettings.updateNote", { name: APP_DISTRIBUTION_NAME })}
+              </div>
+            )}
+            {upgradeError && (
+              <div className="native-inline-alert is-error" role="alert" style={{ marginTop: 9 }}>
+                {upgradeError}
+                {appRelease?.releaseUrl && (
+                  <a
+                    href={appRelease.releaseUrl}
+                    target="_blank"
+                    rel="noreferrer"
+                    style={{ marginLeft: 6, color: "inherit", fontWeight: 650 }}
+                    onClick={(event) => handleExternalLinkClick(event, appRelease.releaseUrl)}
+                  >
+                    {t("appSettings.openRelease")}
+                  </a>
+                )}
+              </div>
+            )}
+          </div>
           <div className="native-settings-card" style={sectionCardStyle}>
             <div style={sectionTitleStyle}>{t("appSettings.languageSection")}</div>
             <div style={sectionHintStyle}>{t("appSettings.languageHint")}</div>

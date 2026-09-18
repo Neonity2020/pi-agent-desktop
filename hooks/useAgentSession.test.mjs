@@ -155,5 +155,6 @@ test("keeps the message column and composer on the scrollport axis", () => {
   assert.doesNotMatch(chatWindowSource, /scrollbarGutter: "stable both-edges"/);
   assert.match(chatWindowSource, /scrollContainer\.offsetWidth - scrollContainer\.clientWidth/);
   assert.match(chatWindowSource, /--chat-scrollbar-inset/);
+  assert.doesNotMatch(chatWindowSource, /new ResizeObserver\(syncScrollbarInset\)/);
   assert.doesNotMatch(nativeThemeSource, /width: calc\(100% - 16px\)/);
 });

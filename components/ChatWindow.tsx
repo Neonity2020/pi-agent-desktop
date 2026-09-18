@@ -561,20 +561,14 @@ export function ChatWindow({ session, newSessionCwd, onAgentEnd, onSessionCreate
     const scrollContainer = scrollContainerRef.current;
     if (!viewport || !scrollContainer) return;
 
-    const syncScrollbarInset = () => {
-      const inset = Math.max(0, scrollContainer.offsetWidth - scrollContainer.clientWidth);
-      viewport.style.setProperty("--chat-scrollbar-inset", `${inset}px`);
-    };
-    syncScrollbarInset();
+    // Measure once when the chat viewport is established. WebKit can report a
+    // transiently different clientWidth when content changes from the loading
+    // state to an overflowing session; following that value would visibly
+    // nudge the fixed composer even though its viewport did not move.
+    const inset = Math.max(0, scrollContainer.offsetWidth - scrollContainer.clientWidth);
+    viewport.style.setProperty("--chat-scrollbar-inset", `${inset}px`);
 
-    const observer = typeof ResizeObserver === "undefined"
-      ? null
-      : new ResizeObserver(syncScrollbarInset);
-    observer?.observe(scrollContainer);
-    window.addEventListener("resize", syncScrollbarInset);
     return () => {
-      observer?.disconnect();
-      window.removeEventListener("resize", syncScrollbarInset);
       viewport.style.removeProperty("--chat-scrollbar-inset");
     };
   }, [isEmptyNew, scrollContainerRef]);
