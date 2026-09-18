@@ -103,31 +103,27 @@ jobs:
           tagName: v__VERSION__
           releaseName: pi-agent-desktop v__VERSION__
           releaseBody: |
-            ## Pi Agent Desktop 0.4.4
+            ## Pi Agent Desktop 0.4.5
 
-            This release improves chat input responsiveness across narrow and mobile viewports, adds breathing room to the sidebar bottom, wraps provider forms for accessibility, and fixes branch navigator localization.
+            This release simplifies the app settings version chip and stabilizes the chat composer scrollbar inset.
 
             ### Fixes & Improvements
 
-            - ChatInput responsive toolbar: controls adapt gracefully on compact and narrow windows with progressive label collapse and tool-popover wrapping, preventing control overflow.
-            - Sidebar bottom spacing: added bottom padding so footer actions are never clipped or crowded when scrolling to the bottom.
-            - Provider settings form semantics: wrapped API key inputs in a semantic `<form>` with appropriate autocomplete attributes to resolve DOM password autofill warnings.
-            - Conversation branch navigator: added proper localized labels and ARIA tooltips for branch switching.
+            - App settings version chip: dropped the redundant versionsMatch path and now drives the chip directly from the upstream-computed updateAvailable flag. Moved the close button into the header, restructured the updates card, and added an update note plus a release link in the error alert.
+            - Chat composer scrollbar inset: measure the scrollbar inset once when the viewport is established instead of tracking it with a ResizeObserver. WebKit could report a transiently different clientWidth when content swapped from the loading state to an overflowing session, which visibly nudged the fixed composer.
 
             Bundled components: pi 0.84.4, pi-web 0.8.7.
 
             ---
 
-            ## Pi Agent Desktop 0.4.4
+            ## Pi Agent Desktop 0.4.5
 
-            本次发布优化了窄屏及移动端输入框工具栏的响应式布局，增加了侧边栏底部的滚动安全间距，优化了 Provider 凭据表单语义与可访问性，并完善了对话分支切换器的国际化提示。
+            本次发布简化了应用设置中的版本信息展示，并修复了聊天输入框滚动条内边距抖动问题。
 
             ### 修复与改进
 
-            - 优化 ChatInput 工具栏在紧凑和窄窗口下的响应式表现：标签智能折叠收缩、工具弹出菜单灵活排布，彻底消除工具栏挤压溢出。
-            - 侧边栏底部增加呼吸感安全间距，确保滚动到底部时底部操作区不会被截断或紧贴容器边缘。
-            - Provider 配置中的 API Key 字段包裹进语义化 `<form>` 容器并补充标准 autocomplete 属性，消除 DOM 密码自动填充警告。
-            - 会话历史分支导航器补齐多语言标签支持与无障碍提示。
+            - 应用设置版本信息：移除冗余的版本匹配判断，直接使用上游计算出的 updateAvailable 标志驱动版本芯片；将关闭按钮移入标题栏，重构更新卡片布局，并在错误提示中补充更新说明与发布链接。
+            - 聊天输入框滚动条内边距：将原先的 ResizeObserver 动态跟踪改为一次性测量。WebKit 在内容从加载态切换到溢出会话时会短暂报告不同的 clientWidth，导致固定输入框出现可见的位移抖动。
 
             内置组件版本：pi 0.84.4、pi-web 0.8.7。
           releaseDraft: true
