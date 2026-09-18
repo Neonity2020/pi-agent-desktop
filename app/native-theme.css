@@ -2569,14 +2569,9 @@ html.dark .sidebar-view-switcher-thumb {
 }
 
 .chat-input-shell {
-  /* Stop short of the scroll container's scrollbar gutter on both edges (see
-     scrollbarGutter: "stable both-edges" on .chat-window's scroll container)
-     so this overlay doesn't paint over the scrollbar and fade it out before
-     it reaches the bottom. Insetting symmetrically (rather than only from
-     the right) keeps this centered on the same axis as the message column,
-     which also loses 8px of width on each side to that gutter. */
-  width: calc(100% - 16px);
-  margin: 0 auto;
+  /* The overlay's parent is sized to the scrollport at runtime, so the
+     composer and message column share one centering axis without assuming a
+     fixed scrollbar width. */
   background:
     linear-gradient(to bottom, transparent, color-mix(in srgb, var(--bg) 94%, transparent) 18%) !important;
 }

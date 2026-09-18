@@ -171,3 +171,24 @@ test("renders compact errors above the input as a wrapping alert", () => {
   assert.match(html, /white-space:pre-wrap/);
   assert.ok(html.indexOf('role="alert"') < html.indexOf("<textarea"));
 });
+
+test("renders ChatInput controls with responsive container classes and accessibility labels", () => {
+  const html = renderToStaticMarkup(
+    React.createElement(
+      I18nProvider,
+      null,
+      React.createElement(ChatInput, {
+        onSend() {},
+        onAbort() {},
+        onCompact() {},
+        onSoundToggle() {},
+        soundEnabled: true,
+        isStreaming: false,
+      }),
+    ),
+  );
+
+  assert.match(html, /class="chat-composer"/);
+  assert.match(html, /class="chat-composer-controls"/);
+  assert.match(html, /aria-label="Disable completion sound"/);
+});

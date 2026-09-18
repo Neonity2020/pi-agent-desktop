@@ -4,6 +4,7 @@ import test from "node:test";
 
 const source = await readFile(new URL("./useAgentSession.ts", import.meta.url), "utf8");
 const chatWindowSource = await readFile(new URL("../components/ChatWindow.tsx", import.meta.url), "utf8");
+const nativeThemeSource = await readFile(new URL("../app/native-theme.css", import.meta.url), "utf8");
 const rpcManagerSource = await readFile(new URL("../lib/rpc-manager.ts", import.meta.url), "utf8");
 
 test("keeps the session event stream open through the idle grace window", () => {
@@ -145,6 +146,14 @@ test("sizes the message tail from the rendered bottom composer", () => {
   assert.match(chatWindowSource, /bottomComposerScrollFrameRef = useRef<number \| null>\(null\)/);
   assert.match(chatWindowSource, /distanceFromBottom <= Math\.abs\(nextHeight - previousHeight\) \+ 1/);
   assert.match(chatWindowSource, /scrollToBottom\("auto"\)/);
-  assert.match(chatWindowSource, /<div ref=\{bottomComposerRef\} className="absolute inset-x-0 bottom-0 z-20">/);
+  assert.match(chatWindowSource, /ref=\{bottomComposerRef\}[\s\S]*?className="absolute inset-x-0 bottom-0 z-20"[\s\S]*?--chat-scrollbar-inset/);
   assert.match(chatWindowSource, /height: bottomComposerHeight/);
+});
+
+test("keeps the message column and composer on the scrollport axis", () => {
+  assert.match(chatWindowSource, /scrollbarGutter: "stable"/);
+  assert.doesNotMatch(chatWindowSource, /scrollbarGutter: "stable both-edges"/);
+  assert.match(chatWindowSource, /scrollContainer\.offsetWidth - scrollContainer\.clientWidth/);
+  assert.match(chatWindowSource, /--chat-scrollbar-inset/);
+  assert.doesNotMatch(nativeThemeSource, /width: calc\(100% - 16px\)/);
 });

@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useRef, useState, type PointerEvent as ReactPointerEvent, type RefObject } from "react";
+import { useI18n } from "../hooks/useI18n";
 
 export interface ConversationTurnLocation {
   index: number;
@@ -21,6 +22,7 @@ function nearestTurnIndex(event: ReactPointerEvent<HTMLDivElement>, count: numbe
 }
 
 export function ConversationNavigator({ turns, scrollContainerRef, onSelect }: Props) {
+  const { t } = useI18n();
   const [activeIndex, setActiveIndex] = useState(0);
   const [previewIndex, setPreviewIndex] = useState<number | null>(null);
   const [isHovering, setIsHovering] = useState(false);
@@ -95,7 +97,7 @@ export function ConversationNavigator({ turns, scrollContainerRef, onSelect }: P
       <div
         className="conversation-navigator-track"
         role="slider"
-        aria-label="对话定位"
+        aria-label={t("chat.conversationNavigator")}
         aria-valuemin={1}
         aria-valuemax={turns.length}
         aria-valuenow={activeIndex + 1}

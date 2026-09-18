@@ -229,7 +229,10 @@ function SecretTextInput({
   }, [value]);
 
   return (
-    <div style={{ position: "relative", width: "100%", ...style }}>
+    <form
+      onSubmit={(e) => e.preventDefault()}
+      style={{ position: "relative", width: "100%", margin: 0, padding: 0, ...style }}
+    >
       <input
         className="native-input"
         type={visible ? "text" : "password"}
@@ -238,7 +241,9 @@ function SecretTextInput({
         onKeyDown={onKeyDown}
         placeholder={placeholder}
         style={{ ...inputStyle, paddingRight: 34, fontFamily: mono ? "var(--font-mono)" : "inherit" }}
-        autoComplete={autoComplete}
+        autoComplete={autoComplete ?? "new-password"}
+        data-1p-ignore="true"
+        data-lpignore="true"
         spellCheck={spellCheck}
       />
       <button
@@ -278,7 +283,7 @@ function SecretTextInput({
           </svg>
         )}
       </button>
-    </div>
+    </form>
   );
 }
 

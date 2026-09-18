@@ -243,6 +243,7 @@ body {
   flex: 1;
   overflow-y: auto;
   overflow-x: hidden;
+  padding-bottom: 12px;
   scrollbar-width: thin;
   scrollbar-color: transparent transparent;
 }
