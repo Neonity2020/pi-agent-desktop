@@ -1143,6 +1143,20 @@ export function ChatWindow({ session, searchTarget, onSearchTargetHandled, initi
     ? (modelThinkingLevelMaps[`${displayModelValue.provider}:${displayModelValue.modelId}`] ?? null)
     : null;
 
+  // Jump to a conversation turn from the navigator rail. Turns can sit
+  // outside the rendered window, so expand the window to the full branch
+  // first, then scroll once the anchor is mounted.
+  const selectConversationTurn = useCallback((turnIndex: number) => {
+    setVisibleCount(messages.length);
+    requestAnimationFrame(() => requestAnimationFrame(() => {
+      const container = scrollContainerRef.current;
+      const anchor = container?.querySelector<HTMLElement>(`[data-conversation-turn="${turnIndex}"]`);
+      if (!container || !anchor) return;
+      const top = anchor.getBoundingClientRect().top - container.getBoundingClientRect().top + container.scrollTop - 16;
+      container.scrollTo({ top: Math.max(0, top), behavior: "smooth" });
+    }));
+  }, [messages.length, scrollContainerRef]);
+
   const chatInputElement = (
     <ChatInput
       ref={chatInputRef}
@@ -1545,6 +1559,11 @@ export function ChatWindow({ session, searchTarget, onSearchTargetHandled, initi
             </div>
           </div>
         </div>
+          <ConversationNavigator
+            turns={conversationTurns}
+            scrollContainerRef={scrollContainerRef}
+            onSelect={selectConversationTurn}
+          />
         </>
         }
       </div>

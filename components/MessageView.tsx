@@ -1123,7 +1123,7 @@ function ToolCallBlock({ block, result, duration, onOpenSession }: { block: Tool
       {/* ── Expanded: applied-patch split diff ── */}
       {expanded && patchFiles && (
         <div style={{ borderTop: "1px solid rgba(34,197,94,0.15)", background: "var(--bg)" }}>
-          <SplitFilesView files={patchFiles} />
+          <ApplyPatchDiffView files={patchFiles} />
         </div>
       )}
 
@@ -1171,6 +1171,11 @@ function PairedDiffResult({ diff }: {
       <SplitPatchView text={diff.text} />
     </div>
   );
+}
+
+function ApplyPatchDiffView({ files }: { files: SplitDiffFile[] }) {
+  const { mode } = useDiffViewMode();
+  return <SplitFilesView files={files} mode={mode} />;
 }
 
 function SplitPatchView({ text }: { text: string }) {
