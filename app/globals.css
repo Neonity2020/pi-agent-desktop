@@ -2101,6 +2101,8 @@ span.token.table {
   .column-resize-handle {
     display: none;
   }
+}
+
 /* Full-width mode keeps the mounted viewer and saved split width intact. */
 @media (min-width: 641px) {
   .right-panel-container.right-panel-open.right-panel-full-width {

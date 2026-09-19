@@ -99,13 +99,11 @@ test("risk follows the declared structural-drift thresholds", () => {
   }
 });
 
-test("style-only drift is rated low even when the diff is large", () => {
-  // ModelsConfig changes 146 lines but only 13 structurally, because the rest
-  // is inline-style-to-className substitution. That must not block a sync.
-  const entry = manifest.driftedUpstreamFiles["components/ModelsConfig.tsx"];
-  assert.ok(entry.drift > 100, "expected a large total diff");
-  assert.ok(entry.structuralDrift < 30, "expected small structural drift");
-  assert.equal(entry.risk, "low");
+test("files fully adopted from upstream leave the manifest", () => {
+  // ModelsConfig was the historical style-only example (146 total / 13
+  // structural). After the v0.9.1 sync it tracks upstream exactly, so it
+  // must no longer be registered as drifted.
+  assert.equal(manifest.driftedUpstreamFiles["components/ModelsConfig.tsx"], undefined);
 });
 
 test("high and medium overlaps require review; low-only does not", () => {
@@ -113,12 +111,12 @@ test("high and medium overlaps require review; low-only does not", () => {
   assert.equal(high.reviewRequired, true);
   assert.equal(high.highestRisk, "high");
 
-  const medium = classifyIncomingChanges(["components/ChatWindow.tsx"], manifest);
+  const medium = classifyIncomingChanges(["hooks/useTheme.ts"], manifest);
   assert.equal(medium.reviewRequired, true);
   assert.equal(medium.highestRisk, "medium");
 
   const low = classifyIncomingChanges(
-    ["components/BranchNavigator.tsx", "components/ModelsConfig.tsx"],
+    ["components/BranchNavigator.tsx"],
     manifest,
   );
   assert.equal(low.reviewRequired, false);
