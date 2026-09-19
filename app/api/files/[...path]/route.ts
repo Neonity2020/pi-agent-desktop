@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
+import { readTextPreviewChunk } from "@/lib/text-preview";
 import fs from "fs";
 import path from "path";
 import {
@@ -9,7 +10,6 @@ import {
 import {
   DOCX_PREVIEW_MAX_BYTES,
   IMAGE_PREVIEW_MAX_BYTES,
-  TEXT_PREVIEW_MAX_BYTES,
   documentPreviewKind,
   getAudioMime,
   getDocumentMime,
@@ -642,18 +642,17 @@ export async function GET(
       if (documentMime) {
         return streamFile(filePath, stat, documentMime, request.headers.get("range"));
       }
-      const isHtmlFile = getFileExt(filePath) === "html" || getFileExt(filePath) === "htm";
-      const textPreviewMaxBytes = isHtmlFile ? HTML_PREVIEW_MAX_BYTES : TEXT_PREVIEW_MAX_BYTES;
-      if (stat.size > textPreviewMaxBytes) {
-        return NextResponse.json({
-          error: isHtmlFile
-            ? "File too large for preview (>10MB)"
-            : "File too large for preview (>256KB)",
-        }, { status: 413 });
+      const rawOffset = request.nextUrl.searchParams.get("offset");
+      if (rawOffset !== null && !/^\d+$/.test(rawOffset)) {
+        return NextResponse.json({ error: "Invalid text preview offset" }, { status: 400 });
       }
-      const content = fs.readFileSync(filePath, "utf-8");
+      const offset = Number(rawOffset ?? 0);
+      if (!Number.isSafeInteger(offset) || offset > stat.size) {
+        return NextResponse.json({ error: "Invalid text preview offset" }, { status: 400 });
+      }
+      const chunk = readTextPreviewChunk(filePath, stat.size, offset);
       const language = getLanguage(filePath);
-      return NextResponse.json({ content, language, size: stat.size });
+      return NextResponse.json({ ...chunk, language, size: stat.size });
     }
 
     if (type === "download") {

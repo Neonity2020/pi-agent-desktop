@@ -1,6 +1,7 @@
 import type { Metadata, Viewport } from "next";
 import { Noto_Sans_Mono } from "next/font/google";
 import { PwaRegistration } from "@/components/PwaRegistration";
+import { THEME_INIT_SCRIPT } from "@/lib/theme";
 import "katex/dist/katex.min.css";
 import "./globals.css";
 import "./settings.css";
@@ -74,11 +75,7 @@ export default function RootLayout({
         <link rel="stylesheet" href="/api/custom-css" />
         <script
           dangerouslySetInnerHTML={{
-            // Pin color-scheme + .dark before first paint so a light preference
-            // never flashes the OS dark webview chrome, and so an explicit
-            // "light" choice always clears a leftover .dark class. Treat an
-            // unset/empty/auto value like upstream does (follow the OS).
-            __html: `(function(){try{var t=localStorage.getItem("pi-theme");var d=t==="dark"||((t==null||t===""||t==="auto")&&window.matchMedia&&window.matchMedia("(prefers-color-scheme: dark)").matches);document.documentElement.classList.toggle("dark",d);document.documentElement.style.colorScheme=d?"dark":"light"}catch(e){}})();`,
+            __html: THEME_INIT_SCRIPT,
           }}
         />
       </head>

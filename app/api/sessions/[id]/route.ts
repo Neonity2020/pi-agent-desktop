@@ -4,6 +4,8 @@ import { dirname, join } from "path";
 import { SessionManager } from "@earendil-works/pi-coding-agent";
 import {
   attachSessionProjectInfo,
+  listAllSessions,
+  mergeSessionLists,
   resolveSessionPath,
   resolveSessionIdByPath,
   invalidateSessionPathCache,
@@ -13,13 +15,14 @@ import {
   readSessionHeader,
 } from "@/lib/session-reader";
 import { sessionPathKey } from "@/lib/session-path";
-import { getRpcSession } from "@/lib/rpc-manager";
+import { abortSubagent, getRpcSession, getRpcSessionInfos } from "@/lib/rpc-manager";
 import { projectTreeForResponse } from "@/lib/project-tree";
 import { computeSessionTotalActiveMs } from "@/lib/session-timing";
 import { computeSessionStats } from "@/lib/session-stats";
 import type { SessionEntry } from "@/lib/types";
 import { readSubagentRun, readSubagentSessionResources, SUBAGENT_META_TYPE } from "@/lib/subagents";
 import { readSessionToolSelection } from "@/lib/session-tool-selection";
+import { jsonResponse } from "@/lib/json-response";
 
 export async function GET(
   req: Request,
@@ -93,17 +96,20 @@ export async function GET(
       transient: !filePath || !existsSync(filePath),
     }]))[0] : null;
 
-    return NextResponse.json({
-      sessionId: id,
-      filePath,
-      info,
-      leafId,
-      tree,
-      context,
-      stats,
-      totalActiveMs,
-      ...(toolNames !== undefined ? { toolNames } : {}),
-    });
+    return jsonResponse(
+      req,
+      {
+        sessionId: id,
+        filePath,
+        info,
+        leafId,
+        tree,
+        context,
+        stats,
+        totalActiveMs,
+        ...(toolNames !== undefined ? { toolNames } : {}),
+      },
+    );
   } catch (error) {
     return NextResponse.json({ error: String(error) }, { status: 500 });
   }
@@ -157,22 +163,14 @@ export async function DELETE(
       return NextResponse.json({ error: "Session not found" }, { status: 404 });
     }
 
-    // Not flushed yet: the session only exists in memory, so discarding the
-    // runtime is the whole deletion — there is no file to unlink and no child
-    // session that could reference it.
-    if (!existsSync(filePath)) {
-      const live = getRpcSession(id);
-      if (!live?.isAlive()) {
-        return NextResponse.json({ error: "Session not found" }, { status: 404 });
-      }
-      live.destroy();
-      invalidateSessionPathCache(id);
-      invalidateSessionListCache();
-      return NextResponse.json({ ok: true });
-    }
-
     // Read only the bounded header before deleting.
-    const parentSessionPath = readSessionHeader(filePath)?.parentSession;
+    let parentSessionPath: string | undefined;
+    try {
+      parentSessionPath = readSessionHeader(filePath)?.parentSession;
+    } catch (error) {
+      // Empty runtime sessions have a cached path before their first disk write.
+      if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error;
+    }
     let parentSessionId: string | undefined;
     if (parentSessionPath) {
       try {
@@ -183,31 +181,87 @@ export async function DELETE(
       }
     }
 
-    // Re-attach all direct children to this session's parent (cascade re-parent)
-    // Scan sibling files in the same directory
     const targetPathKey = sessionPathKey(filePath);
     const dir = dirname(filePath);
+    // Deleting a session also deletes every persisted or live subagent below it.
+    const sessions = mergeSessionLists(
+      await listAllSessions({ force: true }),
+      getRpcSessionInfos({ includeTransient: true }),
+    );
+    const childrenByParent = new Map<string, string[]>();
+    for (const session of sessions) {
+      if (session.relation?.kind !== "subagent") continue;
+      const children = childrenByParent.get(session.relation.parentSessionId) ?? [];
+      children.push(session.id);
+      childrenByParent.set(session.relation.parentSessionId, children);
+    }
+    const sessionPaths = new Map(sessions.map((session) => [session.id, session.path]));
+    // Include local files even when the global catalogue is stale or incomplete.
+    try {
+      for (const file of readdirSync(dir).filter((name) => name.endsWith(".jsonl"))) {
+        const childPath = join(dir, file);
+        if (sessionPathKey(childPath) === targetPathKey) continue;
+        try {
+          const lines = readFileSync(childPath, "utf8").split("\n");
+          const header = JSON.parse(lines[0]) as { type?: string; id?: string };
+          if (header.type !== "session" || typeof header.id !== "string") continue;
+          const entries = lines.slice(1).flatMap((line) => {
+            try { return [JSON.parse(line) as SessionEntry]; } catch { return []; }
+          });
+          const subagent = readSubagentRun(entries, header.id, childPath);
+          if (!subagent) continue;
+          const children = childrenByParent.get(subagent.parentSessionId) ?? [];
+          children.push(header.id);
+          childrenByParent.set(subagent.parentSessionId, children);
+          sessionPaths.set(header.id, childPath);
+        } catch { /* skip malformed or concurrently removed sessions */ }
+      }
+    } catch { /* skip if dir unreadable */ }
+    const deletedSessionIds = new Set<string>([id]);
+    const pending = [id];
+    while (pending.length > 0) {
+      const parentId = pending.pop()!;
+      for (const childId of childrenByParent.get(parentId) ?? []) {
+        if (deletedSessionIds.has(childId)) continue;
+        deletedSessionIds.add(childId);
+        pending.push(childId);
+      }
+    }
+    const deletedPaths = new Map<string, string>([[id, filePath]]);
+    for (const deletedId of deletedSessionIds) {
+      const sessionPath = sessionPaths.get(deletedId);
+      if (sessionPath) deletedPaths.set(deletedId, sessionPath);
+    }
+    for (const deletedId of deletedSessionIds) {
+      if (deletedPaths.has(deletedId)) continue;
+      const runtimePath = getRpcSession(deletedId)?.sessionFile;
+      if (runtimePath) deletedPaths.set(deletedId, runtimePath);
+      else {
+        const resolvedPath = await resolveSessionPath(deletedId);
+        if (resolvedPath) deletedPaths.set(deletedId, resolvedPath);
+      }
+    }
+    const deletedPathKeys = new Set([...deletedPaths.values()].map((path) => sessionPathKey(path)));
+
+    // Re-attach all direct children to this session's parent (cascade re-parent)
+    // Scan sibling files in the same directory
     try {
       const files = readdirSync(dir).filter(
         (file) => file.endsWith(".jsonl") && sessionPathKey(join(dir, file)) !== targetPathKey,
       );
       for (const file of files) {
         const childPath = join(dir, file);
+        if (deletedPathKeys.has(sessionPathKey(childPath))) continue;
         try {
-          // Bounded header read first — only actual children (usually few)
-          // pay for a full-file rewrite. Previously every sibling .jsonl in
-          // the directory was loaded into memory wholesale.
-          const header = readSessionHeader(childPath);
+          const content = readFileSync(childPath, "utf8");
+          const lines = content.split("\n");
+          const header = JSON.parse(lines[0]) as { type?: string; parentSession?: string };
           if (
-            header?.parentSession &&
+            header.type === "session" &&
+            header.parentSession &&
             sessionPathKey(header.parentSession) === targetPathKey
           ) {
-            // Rewrite the child's header with the new parentSession. The bounded
-            // header read above already filtered to actual children, so only they
-            // pay for the full-file rewrite. A subagent session also stores the
-            // parent reference in a custom metadata entry — update it too.
-            const content = readFileSync(childPath, "utf8");
-            const lines = content.split("\n");
+            // Rewrite header with new parentSession
             header.parentSession = parentSessionPath;
             lines[0] = JSON.stringify(header);
             if (parentSessionPath && parentSessionId) {
@@ -235,15 +289,26 @@ export async function DELETE(
               }
             }
             writeFileSync(childPath, lines.join("\n"));
-            invalidateScannedSession(childPath);
           }
         } catch { /* skip malformed */ }
       }
     } catch { /* skip if dir unreadable */ }
 
+    for (const deletedId of [...deletedSessionIds].reverse()) {
+      if (deletedId === id) continue;
+      try { await abortSubagent(deletedId); } catch { /* idle or completed */ }
+      await getRpcSession(deletedId)?.shutdown();
+    }
+    try { await abortSubagent(id); } catch { /* ordinary session */ }
     await getRpcSession(id)?.shutdown();
-    unlinkSync(filePath);
-    invalidateSessionPathCache(id);
+    for (const [deletedId, deletedPath] of deletedPaths) {
+      try {
+        unlinkSync(deletedPath);
+      } catch (error) {
+        if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error;
+      }
+      invalidateSessionPathCache(deletedId);
+    }
     invalidateSessionListCache();
     return NextResponse.json({ ok: true });
   } catch (error) {
