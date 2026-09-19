@@ -1,58 +1,45 @@
-const DISABLE_MODEL_INVOCATION_KEY = "disable-model-invocation";
+import { parseFrontmatter } from "@earendil-works/pi-coding-agent";
 
-type FrontmatterParts = {
-  opening: string;
-  yaml: string;
-  closing: string;
-  rest: string;
-  newline: "\n" | "\r\n";
-};
-
-function splitFrontmatter(content: string): FrontmatterParts | null {
-  const match = /^(---)(\r?\n)([\s\S]*?)(\r?\n---(?:\r?\n|$))/.exec(content);
-  if (!match) return null;
-  return {
-    opening: `${match[1]}${match[2]}`,
-    yaml: match[3],
-    closing: match[4],
-    rest: content.slice(match[0].length),
-    newline: match[2] as "\n" | "\r\n",
-  };
-}
+const KEY = "disable-model-invocation";
+const KEY_LINE = `[ \\t]*(?:${KEY}|"${KEY}"|'${KEY}')[ \\t]*:`;
 
 /**
- * Surgically updates the one frontmatter key owned by the skills UI.
- * Existing duplicate lines are collapsed so files written by older versions
- * become parseable again, while all unrelated YAML formatting is preserved.
+ * Toggle the `disable-model-invocation` frontmatter key with a surgical line
+ * edit that preserves the original YAML formatting of every other field.
+ *
+ * The key is detected by presence rather than truthiness: an explicit
+ * `disable-model-invocation: false` must be updated in place. Prepending a
+ * second key (as a truthiness check would) creates a duplicate YAML key that
+ * makes the whole file unparseable, and the skill loader then drops the skill.
  */
-export function setSkillModelInvocationDisabled(
-  content: string,
-  disabled: boolean,
-): string {
-  const parts = splitFrontmatter(content);
-  if (!parts) {
-    if (!disabled) return content;
-    const newline = content.includes("\r\n") ? "\r\n" : "\n";
-    return `---${newline}${DISABLE_MODEL_INVOCATION_KEY}: true${newline}---${newline}${content}`;
+export function setDisableModelInvocation(content: string, disable: boolean): string {
+  const { frontmatter } = parseFrontmatter<Record<string, unknown>>(content);
+  const hasKey = Object.prototype.hasOwnProperty.call(frontmatter, KEY);
+  if (!disable && !hasKey) return content;
+
+  // Only edit inside the frontmatter block, so a body line that happens to
+  // document the key is never touched.
+  const closing = content.startsWith("---") ? content.indexOf("\n---", 3) : -1;
+  const head = closing === -1 ? content : content.slice(0, closing);
+  const tail = closing === -1 ? "" : content.slice(closing);
+
+  if (disable) {
+    if (hasKey) {
+      const keyLine = new RegExp(`^(${KEY_LINE})[^\\r\\n]*(\\r?)$`, "m");
+      if (!keyLine.test(head)) throw new Error(`Cannot edit ${KEY}: unsupported frontmatter formatting`);
+      return head.replace(keyLine, "$1 true$2") + tail;
+    }
+    const withKey = head.replace(/^---(\r?\n)/, `---$1${KEY}: true$1`);
+    if (withKey === head) {
+      // No frontmatter block at all — create one.
+      return `---\n${KEY}: true\n---\n${content}`;
+    }
+    return withKey + tail;
   }
 
-  const keyLine = new RegExp(
-    `^${DISABLE_MODEL_INVOCATION_KEY}[ \\t]*:.*(?:\\r?\\n|$)`,
-    "gm",
-  );
-  let found = false;
-  let yaml = parts.yaml.replace(keyLine, () => {
-    if (!disabled || found) return "";
-    found = true;
-    return `${DISABLE_MODEL_INVOCATION_KEY}: true${parts.newline}`;
-  });
-
-  if (disabled && !found) {
-    yaml = `${DISABLE_MODEL_INVOCATION_KEY}: true${parts.newline}${yaml}`;
-  } else if (yaml.endsWith(parts.newline)) {
-    // The closing delimiter already owns the separator newline.
-    yaml = yaml.slice(0, -parts.newline.length);
-  }
-
-  return `${parts.opening}${yaml}${parts.closing}${parts.rest}`;
+  // Drop the line together with its preceding newline so no blank line is
+  // left behind; the key is never the first line of the frontmatter block.
+  const keyLine = new RegExp(`\\n${KEY_LINE}[^\\n]*`);
+  if (!keyLine.test(head)) throw new Error(`Cannot edit ${KEY}: unsupported frontmatter formatting`);
+  return head.replace(keyLine, "") + tail;
 }

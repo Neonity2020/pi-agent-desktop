@@ -3,7 +3,8 @@ import { Noto_Sans_Mono } from "next/font/google";
 import { PwaRegistration } from "@/components/PwaRegistration";
 import "katex/dist/katex.min.css";
 import "./globals.css";
-// Fork-local restyle layer — must come after globals.css so its
+import "./settings.css";
+// Fork-local restyle layer — must come after the upstream stylesheets so its
 // equal-specificity rules win the cascade. See app/native-theme.css.
 import "./native-theme.css";
 import { PRODUCT_NAME } from "@/lib/branding";
@@ -75,12 +76,13 @@ export default function RootLayout({
           dangerouslySetInnerHTML={{
             // Pin color-scheme + .dark before first paint so a light preference
             // never flashes the OS dark webview chrome, and so an explicit
-            // "light" choice always clears a leftover .dark class.
-            __html: `(function(){try{var t=localStorage.getItem("pi-theme");var d=t==="dark"||(t!=="light"&&window.matchMedia&&window.matchMedia("(prefers-color-scheme: dark)").matches);document.documentElement.classList.toggle("dark",d);document.documentElement.style.colorScheme=d?"dark":"light"}catch(e){}})();`,
+            // "light" choice always clears a leftover .dark class. Treat an
+            // unset/empty/auto value like upstream does (follow the OS).
+            __html: `(function(){try{var t=localStorage.getItem("pi-theme");var d=t==="dark"||((t==null||t===""||t==="auto")&&window.matchMedia&&window.matchMedia("(prefers-color-scheme: dark)").matches);document.documentElement.classList.toggle("dark",d);document.documentElement.style.colorScheme=d?"dark":"light"}catch(e){}})();`,
           }}
         />
       </head>
-      <body translate="no" className="notranslate">
+      <body translate="no" className="notranslate" suppressHydrationWarning>
         {children}
         <PwaRegistration />
       </body>

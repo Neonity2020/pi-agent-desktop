@@ -1,6 +1,6 @@
 "use client";
 
-import { memo, useEffect, useRef, useState, type ReactNode } from "react";
+import { memo, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { SyntaxHighlighter, vs, vscDarkPlus } from "@/lib/syntax-highlighting";
 import { useTheme } from "@/hooks/useTheme";
 import { useI18n } from "@/hooks/useI18n";
@@ -67,7 +67,7 @@ export function MermaidBlock({ code, isStreaming, defaultPreview = false }: Merm
     };
   }, [code, currentKey, isDark, previewVisible]);
 
-  const previewButton = (
+  const previewButton = useMemo(() => (
     <button
       type="button"
       onClick={() => setShowPreview((v) => !v)}
@@ -77,10 +77,10 @@ export function MermaidBlock({ code, isStreaming, defaultPreview = false }: Merm
     >
       {previewVisible ? t("i18n.source") : t("i18n.preview")}
     </button>
-  );
+  ), [isStreaming, previewVisible, t]);
 
   if (!previewVisible) {
-    return <CodeBlock code={code} lang="mermaid" headerAction={previewButton} />;
+    return <CodeBlock code={code} lang="mermaid" headerAction={previewButton} isStreaming={isStreaming} />;
   }
 
   const body = renderState?.key === currentKey && renderState.status === "error" ? (
@@ -222,15 +222,18 @@ interface CodeBlockProps {
   code: string;
   lang: string;
   headerAction?: ReactNode;
+  isStreaming?: boolean;
 }
 
 /**
  * Syntax-highlighted code block with copy button.
  * Used as the "source" view for mermaid blocks and for all non-mermaid code fences.
  * Memoized because Prism tokenization is expensive; for plain fences (no
- * headerAction) props are stable across parent re-renders.
+ * headerAction) props are stable across parent re-renders. While the owning
+ * message is still streaming, the block renders as plain monospace text —
+ * highlighting a growing block re-tokenizes all of it on every chunk.
  */
-export const CodeBlock = memo(function CodeBlock({ code, lang, headerAction }: CodeBlockProps) {
+export const CodeBlock = memo(function CodeBlock({ code, lang, headerAction, isStreaming }: CodeBlockProps) {
   const { isDark } = useTheme();
   const { t } = useI18n();
   const [copied, setCopied] = useState(false);
@@ -256,24 +259,39 @@ export const CodeBlock = memo(function CodeBlock({ code, lang, headerAction }: C
           </button>
         </div>
       </div>
-      <SyntaxHighlighter
-        language={lang || "text"}
-        style={isDark ? vscDarkPlus : vs}
-        showLineNumbers
-        lineNumberStyle={{ color: "var(--text-dim)", fontStyle: "normal" }}
-        customStyle={{
-          margin: 0,
-          padding: "11px 13px",
-          fontSize: 12.5,
-          lineHeight: 1.62,
-          border: "none",
-          borderRadius: 0,
-          background: "color-mix(in srgb, var(--bg) 92%, var(--bg-panel))",
-        }}
-        codeTagProps={{ style: { fontFamily: "var(--font-mono)" } }}
-      >
-        {code}
-      </SyntaxHighlighter>
+      {isStreaming ? (
+        <pre
+          style={{
+            margin: 0,
+            padding: "11px 13px",
+            fontSize: 12.5,
+            lineHeight: 1.62,
+            overflowX: "auto",
+            background: "color-mix(in srgb, var(--bg) 92%, var(--bg-panel))",
+          }}
+        >
+          <code style={{ fontFamily: "var(--font-mono)" }}>{code}</code>
+        </pre>
+      ) : (
+        <SyntaxHighlighter
+          language={lang || "text"}
+          style={isDark ? vscDarkPlus : vs}
+          showLineNumbers
+          lineNumberStyle={{ color: "var(--text-dim)", fontStyle: "normal" }}
+          customStyle={{
+            margin: 0,
+            padding: "11px 13px",
+            fontSize: 12.5,
+            lineHeight: 1.62,
+            border: "none",
+            borderRadius: 0,
+            background: "color-mix(in srgb, var(--bg) 92%, var(--bg-panel))",
+          }}
+          codeTagProps={{ style: { fontFamily: "var(--font-mono)" } }}
+        >
+          {code}
+        </SyntaxHighlighter>
+      )}
     </div>
   );
 });

@@ -60,3 +60,6 @@ next-env.d.ts
 # local tooling artifacts
 .playwright-mcp/
 pi-gui-session-preview.png
+
+# upstream e2e scratch files
+e2e_*.mjs

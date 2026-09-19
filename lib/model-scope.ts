@@ -11,6 +11,16 @@ import {
   type ModelScopeWarning,
 } from "./model-scope-warnings";
 
+const THINKING_LEVEL_SUFFIXES = new Set<ThinkingLevel>([
+  "off",
+  "minimal",
+  "low",
+  "medium",
+  "high",
+  "xhigh",
+  "max",
+]);
+
 /**
  * Model scoping shared by the UI selector and AgentSession startup.
  *
@@ -88,6 +98,47 @@ function matchesModel(
   return model.provider === ref.provider && model.id === ref.modelId;
 }
 
+function hasGlob(pattern: string): boolean {
+  return pattern.includes("*") || pattern.includes("?") || pattern.includes("[");
+}
+
+function exactReferenceMatches(pattern: string, models: readonly Model<Api>[]): Model<Api>[] {
+  const normalized = pattern.toLowerCase();
+  const canonical = models.filter(
+    (model) => `${model.provider}/${model.id}`.toLowerCase() === normalized,
+  );
+  if (canonical.length > 0) return canonical;
+  return models.filter((model) => model.id.toLowerCase() === normalized);
+}
+
+function assertNoAmbiguousExactPatterns(
+  patterns: readonly string[],
+  models: readonly Model<Api>[],
+): void {
+  for (const pattern of patterns) {
+    if (hasGlob(pattern)) continue;
+
+    let matches = exactReferenceMatches(pattern, models);
+    if (matches.length === 0) {
+      const colonIndex = pattern.lastIndexOf(":");
+      const suffix = colonIndex >= 0 ? pattern.slice(colonIndex + 1) : "";
+      if (THINKING_LEVEL_SUFFIXES.has(suffix as ThinkingLevel)) {
+        matches = exactReferenceMatches(pattern.slice(0, colonIndex), models);
+      }
+    }
+
+    if (matches.length > 1) {
+      const references = matches
+        .map((model) => `${model.provider}/${model.id}`)
+        .sort()
+        .join(", ");
+      throw new Error(
+        `Ambiguous enabledModels entry "${pattern}" matches multiple models: ${references}. Use provider/modelId.`,
+      );
+    }
+  }
+}
+
 /**
  * Resolve the visible model list for `patterns`.
  *
@@ -109,11 +160,16 @@ export async function resolveVisibleModels(
     };
   }
 
-  const { scopedModels, diagnostics } = await resolveModelScopeWithDiagnostics(cleaned, modelRuntime);
+  const available = await modelRuntime.getAvailable();
+  assertNoAmbiguousExactPatterns(cleaned, available);
+  const snapshotRuntime = {
+    getAvailable: async () => available,
+  } as ModelRuntime;
+  const { scopedModels, diagnostics } = await resolveModelScopeWithDiagnostics(cleaned, snapshotRuntime);
   const warnings = diagnostics.map((diagnostic) => classifyDiagnostic(diagnostic, modelRuntime));
   if (scopedModels.length === 0) {
     return {
-      visible: await modelRuntime.getAvailable(),
+      visible: available,
       scopedModels: [],
       thinkingLevelPins: {},
       warnings,

@@ -4,41 +4,46 @@ import { useCallback, useSyncExternalStore } from "react";
 import { APP_PREF_KEYS, getPref, setPref } from "@/lib/app-prefs";
 import { isTauriDesktop } from "@/lib/desktop-updater";
 
-type Theme = "light" | "dark";
+export type ThemePreference = "light" | "dark" | "auto";
+export type ResolvedTheme = "light" | "dark";
+
+type ThemeState = {
+  preference: ThemePreference;
+  theme: ResolvedTheme;
+};
+
+type ToggleOrigin = { x: number; y: number };
+
+const PREFERENCE_CYCLE: ThemePreference[] = ["light", "dark", "auto"];
+const SERVER_SNAPSHOT: ThemeState = { preference: "auto", theme: "light" };
 
 const listeners = new Set<() => void>();
+let state: ThemeState | null = null;
+let systemListening = false;
 
-function subscribe(cb: () => void): () => void {
-  listeners.add(cb);
-  return () => {
-    listeners.delete(cb);
-  };
+function emit(): void {
+  listeners.forEach((cb) => cb());
 }
 
-function getSnapshot(): Theme {
-  if (typeof document === "undefined") return "light";
-  return document.documentElement.classList.contains("dark") ? "dark" : "light";
+function getSystemTheme(): ResolvedTheme {
+  if (typeof window === "undefined") return "light";
+  return window.matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light";
 }
 
-function getServerSnapshot(): Theme {
-  return "light";
+function readStoredPreference(): ThemePreference {
+  const value = getPref(APP_PREF_KEYS.theme);
+  if (value === "light" || value === "dark" || value === "auto") return value;
+  return "auto";
 }
 
-function storedTheme(): Theme | null {
-  const t = getPref(APP_PREF_KEYS.theme);
-  return t === "dark" || t === "light" ? t : null;
+function resolveTheme(preference: ThemePreference): ResolvedTheme {
+  return preference === "auto" ? getSystemTheme() : preference;
 }
 
-function systemTheme(): Theme {
-  return window.matchMedia?.("(prefers-color-scheme: dark)").matches ? "dark" : "light";
-}
-
-function paintThemeClass(next: Theme) {
-  document.documentElement.classList.toggle("dark", next === "dark");
-  document.documentElement.style.colorScheme = next;
-}
-
-async function persistNativeTheme(theme: Theme): Promise<void> {
+// The desktop shell mirrors the resolved theme into its config via the
+// `set_ui_theme` command: the packaged server's port (and therefore the
+// WebView origin, and therefore localStorage) can change between cold starts.
+async function persistNativeTheme(theme: ResolvedTheme): Promise<void> {
   if (!isTauriDesktop()) return;
   try {
     const { invoke } = await import("@tauri-apps/api/core");
@@ -48,86 +53,153 @@ async function persistNativeTheme(theme: Theme): Promise<void> {
   }
 }
 
-function notify() {
-  listeners.forEach((cb) => cb());
+function applyDomTheme(theme: ResolvedTheme): void {
+  if (typeof document === "undefined") return;
+  // Pin color-scheme together with the class so a light preference never
+  // flashes the OS dark webview chrome.
+  document.documentElement.classList.toggle("dark", theme === "dark");
+  document.documentElement.style.colorScheme = theme;
 }
 
-function applyTheme(next: Theme, animate: boolean) {
-  const apply = () => {
-    paintThemeClass(next);
-    setPref(APP_PREF_KEYS.theme, next);
-    void persistNativeTheme(next);
-    notify();
+function ensureState(): ThemeState {
+  if (typeof window === "undefined") return SERVER_SNAPSHOT;
+  if (state) return state;
+
+  const preference = readStoredPreference();
+  const theme = resolveTheme(preference);
+  applyDomTheme(theme);
+  state = { preference, theme };
+  return state;
+}
+
+function setThemeState(preference: ThemePreference, theme: ResolvedTheme, persist: boolean): void {
+  applyDomTheme(theme);
+  if (persist) {
+    setPref(APP_PREF_KEYS.theme, preference);
+    void persistNativeTheme(theme);
+  }
+  state = { preference, theme };
+  emit();
+}
+
+function syncAutoThemeFromSystem(): void {
+  const current = ensureState();
+  if (current.preference !== "auto") return;
+  const theme = getSystemTheme();
+  if (theme === current.theme) return;
+  setThemeState("auto", theme, false);
+  void persistNativeTheme(theme);
+}
+
+function ensureSystemListener(): void {
+  if (systemListening || typeof window === "undefined" || !window.matchMedia) return;
+
+  const mql = window.matchMedia("(prefers-color-scheme: dark)");
+  mql.addEventListener("change", syncAutoThemeFromSystem);
+  // Some browsers delay or miss scheme events while backgrounded.
+  window.addEventListener("focus", syncAutoThemeFromSystem);
+  document.addEventListener("visibilitychange", () => {
+    if (document.visibilityState === "visible") syncAutoThemeFromSystem();
+  });
+  systemListening = true;
+}
+
+function subscribe(cb: () => void): () => void {
+  listeners.add(cb);
+  ensureState();
+  ensureSystemListener();
+  syncAutoThemeFromSystem();
+  return () => {
+    listeners.delete(cb);
   };
+}
 
-  if (!animate) {
-    apply();
-    return;
-  }
+function getSnapshot(): ThemeState {
+  return ensureState();
+}
 
-  const reduceMotion = window.matchMedia?.("(prefers-reduced-motion: reduce)").matches;
-  // WebKitGTK crashes its UI process when startViewTransition is called, so the
-  // desktop shell keeps the existing instant-switch fallback.
-  const supportsVT =
-    !isTauriDesktop() && typeof document.startViewTransition === "function";
-
-  if (!supportsVT || reduceMotion) {
-    apply();
-    return;
-  }
-
-  try {
-    const transition = document.startViewTransition(apply);
-    // A navigation or rapid second toggle can legitimately abort a transition.
-    // Consume those promise rejections so they do not surface as app errors.
-    void transition.ready.catch(() => {});
-    void transition.updateCallbackDone.catch(() => {});
-    void transition.finished.catch(() => {});
-  } catch {
-    apply();
-  }
+function getServerSnapshot(): ThemeState {
+  return SERVER_SNAPSHOT;
 }
 
 // Apply the resolved theme synchronously on first client import so React
 // hydration never briefly inherits the OS appearance after the blocking
-// layout script. Also mirror an explicit choice into the desktop store.
+// layout script, and mirror a stored preference into the desktop store.
 if (typeof window !== "undefined") {
-  const stored = storedTheme();
-  paintThemeClass(stored ?? systemTheme());
-  if (stored) {
-    // Defer IPC until after the current turn so __TAURI_INTERNALS__ is ready.
-    queueMicrotask(() => {
-      void persistNativeTheme(stored);
-    });
-  }
-
-  // Follow the OS appearance until the user picks a theme explicitly
-  // (toggleTheme / setTheme persists the choice, which stops the auto-follow).
-  const media = window.matchMedia?.("(prefers-color-scheme: dark)");
-  media?.addEventListener?.("change", (event) => {
-    if (storedTheme() !== null) return;
-    paintThemeClass(event.matches ? "dark" : "light");
-    notify();
+  const initial = ensureState();
+  // Defer IPC until after the current turn so __TAURI_INTERNALS__ is ready.
+  queueMicrotask(() => {
+    void persistNativeTheme(initial.theme);
   });
 }
 
+function nextPreference(preference: ThemePreference): ThemePreference {
+  const index = PREFERENCE_CYCLE.indexOf(preference);
+  return PREFERENCE_CYCLE[(index + 1) % PREFERENCE_CYCLE.length];
+}
+
 export function useTheme() {
-  const theme = useSyncExternalStore(subscribe, getSnapshot, getServerSnapshot);
+  const snapshot = useSyncExternalStore(subscribe, getSnapshot, getServerSnapshot);
 
-  const toggleTheme = useCallback(() => {
-    applyTheme(getSnapshot() === "dark" ? "light" : "dark", true);
-  }, []);
+  const setThemePreference = useCallback((nextPreference: ThemePreference, origin?: ToggleOrigin) => {
+    const current = ensureState();
+    if (current.preference === nextPreference) return;
+    const nextTheme = resolveTheme(nextPreference);
 
-  const setTheme = useCallback((next: Theme) => {
-    // Always persist — clicking the already-active choice should still pin the
-    // preference so a later OS dark-mode change cannot steal it back.
-    if (getSnapshot() === next) {
-      setPref(APP_PREF_KEYS.theme, next);
-      void persistNativeTheme(next);
+    const apply = () => {
+      setThemeState(nextPreference, nextTheme, true);
+    };
+
+    const reduceMotion = window.matchMedia?.("(prefers-reduced-motion: reduce)").matches;
+    // WebKitGTK crashes its UI process when startViewTransition is called, so
+    // the desktop shell keeps the existing instant-switch fallback.
+    const supportsVT =
+      !isTauriDesktop() && typeof document.startViewTransition === "function";
+
+    if (!supportsVT || reduceMotion) {
+      apply();
       return;
     }
-    applyTheme(next, true);
+
+    const x = origin?.x ?? window.innerWidth / 2;
+    const y = origin?.y ?? window.innerHeight / 2;
+    const endRadius = Math.hypot(
+      Math.max(x, window.innerWidth - x),
+      Math.max(y, window.innerHeight - y),
+    );
+
+    const transition = document.startViewTransition(apply);
+    transition.ready
+      .then(() => {
+        document.documentElement.animate(
+          {
+            clipPath: [
+              `circle(0px at ${x}px ${y}px)`,
+              `circle(${endRadius}px at ${x}px ${y}px)`,
+            ],
+          },
+          {
+            duration: 450,
+            easing: "cubic-bezier(0.22, 0.61, 0.36, 1)",
+            pseudoElement: "::view-transition-new(root)",
+          },
+        );
+      })
+      .catch(() => {
+        // transition cancelled — ignore
+      });
   }, []);
 
-  return { theme, toggleTheme, setTheme, isDark: theme === "dark" };
+  const toggleTheme = useCallback((origin?: ToggleOrigin) => {
+    const current = ensureState();
+    setThemePreference(nextPreference(current.preference), origin);
+  }, [setThemePreference]);
+
+  return {
+    theme: snapshot.theme,
+    preference: snapshot.preference,
+    setThemePreference,
+    toggleTheme,
+    isDark: snapshot.theme === "dark",
+  };
 }
