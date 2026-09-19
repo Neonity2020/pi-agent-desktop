@@ -29,10 +29,12 @@ import type { SessionInfo } from "@/lib/types";
 import { FolderIcon, getFileIcon } from "./FileIcons";
 import { useIsMobile } from "@/hooks/useIsMobile";
 import { useI18n } from "@/hooks/useI18n";
+import type { ReactNode } from "react";
 import type { ExtensionStatusItem } from "@/lib/types";
 import type { ContextUsage, SessionStatsInfo } from "@/lib/pi-types";
 import { ExtensionStatusBar } from "./ExtensionStatusBar";
 import { ContextUsageRing } from "./ContextUsageRing";
+import { useChatAppearance } from "@/hooks/useChatAppearance";
 import type { ToolPreset } from "@/lib/tool-presets";
 import { ModelSelector, type ModelSelectorOption } from "./ModelSelector";
 
@@ -50,10 +52,12 @@ interface Props {
   onFollowUp?: (message: string, images?: AttachedImage[]) => void;
   onPromptWithStreamingBehavior?: (message: string, behavior: "steer" | "followUp", images?: AttachedImage[]) => void;
   isStreaming: boolean;
+  /** Text-only composer without the session controls or outer spacing. */
+  compact?: boolean;
   model?: { provider: string; modelId: string } | null;
   isAutoModelSelection?: boolean;
   modelNames?: Record<string, string>;
-  modelList?: { id: string; name: string; provider: string }[];
+  modelList?: { id: string; name: string; provider: string; input?: string[] }[];
   modelError?: string | null;
   /** Diagnostics from resolving `enabledModels`, e.g. a pattern that matched nothing. */
   modelScopeWarnings?: ModelScopeWarning[];
@@ -436,21 +440,7 @@ function QueuedMessageRow({ kind, label, text }: { kind: "steer" | "follow-up"; 
   );
 }
 
-function ModelNoticeBanner({
-  tone,
-  title,
-  body,
-  action,
-  onDismiss,
-  dismissLabel,
-}: {
-  tone: "error" | "warning";
-  title: string;
-  body: string;
-  action?: React.ReactNode;
-  onDismiss?: () => void;
-  dismissLabel?: string;
-}) {
+function ModelNoticeBanner({ tone, title, body, action, onClose, dismissLabel }: { tone: "error" | "warning"; title: string; body: string; action?: ReactNode; onClose?: () => void; dismissLabel?: string }) {
   const color = tone === "error" ? "239,68,68" : "234,179,8";
   return (
     <div
@@ -488,41 +478,30 @@ function ModelNoticeBanner({
         <line x1="12" y1="17" x2="12.01" y2="17" />
       </svg>
       <div style={{ minWidth: 0, flex: 1 }}>
-        <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-          <div style={{ fontWeight: 600, flex: 1 }}>{title}</div>
-          {action}
-          {onDismiss && (
-            <button
-              type="button"
-              onClick={onDismiss}
-              aria-label={dismissLabel}
-              title={dismissLabel}
-              style={{
-                flexShrink: 0,
-                display: "inline-flex",
-                alignItems: "center",
-                justifyContent: "center",
-                width: 18,
-                height: 18,
-                padding: 0,
-                border: "none",
-                borderRadius: 4,
-                background: "transparent",
-                color: "inherit",
-                cursor: "pointer",
-                fontSize: 13,
-                lineHeight: 1,
-              }}
-            >
-              <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" aria-hidden="true">
-                <line x1="5" y1="5" x2="19" y2="19" />
-                <line x1="19" y1="5" x2="5" y2="19" />
-              </svg>
-            </button>
-          )}
-        </div>
+        <div style={{ fontWeight: 600 }}>{title}</div>
         <div style={{ whiteSpace: "pre-wrap", overflowWrap: "anywhere" }}>{body}</div>
+        {action}
       </div>
+      {onClose && (
+        <button
+          type="button"
+          onClick={onClose}
+          aria-label="Dismiss"
+          style={{
+            flexShrink: 0,
+            background: "none",
+            border: "none",
+            padding: "0 2px",
+            cursor: "pointer",
+            color: "inherit",
+            opacity: 0.7,
+            fontSize: 13,
+            lineHeight: 1,
+          }}
+        >
+          ×
+        </button>
+      )}
     </div>
   );
 }
@@ -533,11 +512,18 @@ export function ModelErrorBanner({ error }: { error?: string | null }) {
   return <ModelNoticeBanner tone="error" title={t("chat.modelError")} body={error} />;
 }
 
-/**
- * Surfaces `enabledModels` patterns that matched nothing (#307) and patterns
- * whose provider has no usable credentials (#48), with an in-conversation
- * dismiss so a stale warning never becomes permanent wallpaper.
- */
+/** True when the selected model is known to accept image input (#584). Unknown modality info never blocks the user. */
+export function modelSupportsImageInput(
+  model: { provider: string; modelId: string } | null | undefined,
+  modelList: { id: string; name: string; provider: string; input?: string[] }[] | undefined
+): boolean {
+  if (!model) return true;
+  const entry = modelList?.find((m) => m.provider === model.provider && m.id === model.modelId);
+  if (!entry || !entry.input) return true;
+  return entry.input.includes("image");
+}
+
+/** Surfaces `enabledModels` patterns that matched nothing, so a typo is visible (#307). */
 export function ModelScopeWarningBanner({
   warnings,
   onDismiss,
@@ -588,7 +574,7 @@ export function ModelScopeWarningBanner({
           {t("chat.modelScopeConfigure")}
         </button>
       ) : undefined}
-      onDismiss={onDismiss}
+      onClose={onDismiss}
       dismissLabel={dismissLabel}
     />
   );
@@ -614,8 +600,10 @@ export const ChatInput = forwardRef<ChatInputHandle, Props>(function ChatInput({
   contextUsage,
   sessionStats,
   onSessionStatsPanelOpen,
+  compact = false,
 }: Props, ref) {
   const { t } = useI18n();
+  const { fontSize } = useChatAppearance();
   const isMobile = useIsMobile();
   const composerRef = useRef<HTMLDivElement | null>(null);
   const [composerTier, setComposerTier] = useState<ComposerTier>(() => (isMobile ? "narrow" : "normal"));
@@ -674,6 +662,7 @@ export const ChatInput = forwardRef<ChatInputHandle, Props>(function ChatInput({
   const [hashQuery, setHashQuery] = useState<HashQueryMatch | null>(null);
   const [hashMenuOpen, setHashMenuOpen] = useState(false);
   const [hashActiveIndex, setHashActiveIndex] = useState(0);
+  const [imageWarningDismissed, setImageWarningDismissed] = useState(false);
   const [historyMenuOpen, setHistoryMenuOpen] = useState(false);
   const [historyActiveIndex, setHistoryActiveIndex] = useState(0);
   const [fileIndex, setFileIndex] = useState<{ cwd: string; entries: FileIndexEntry[]; truncated: boolean } | null>(null);
@@ -923,6 +912,7 @@ export const ChatInput = forwardRef<ChatInputHandle, Props>(function ChatInput({
   }, []);
 
   const processImageFiles = useCallback(async (files: File[]) => {
+    if (compact) return;
     const remaining = Math.max(
       0,
       MAX_ATTACHED_IMAGES - attachedImagesRef.current.length - pendingImageCountRef.current,
@@ -943,7 +933,7 @@ export const ChatInput = forwardRef<ChatInputHandle, Props>(function ChatInput({
     } finally {
       pendingImageCountRef.current -= imageFiles.length;
     }
-  }, [appendAttachedImages, isStreaming]);
+  }, [compact]);
 
   const removeImage = useCallback((index: number) => {
     setAttachedImages((prev) => {
@@ -1012,12 +1002,28 @@ export const ChatInput = forwardRef<ChatInputHandle, Props>(function ChatInput({
     });
   }, [draftKey]);
 
-  useEffect(() => {
+  const resizeTextarea = useCallback(() => {
     const ta = textareaRef.current;
     if (!ta) return;
     ta.style.height = "auto";
-    if (value) ta.style.height = `${Math.min(ta.scrollHeight, 200)}px`;
-  }, [value]);
+    if (ta.value) ta.style.height = `${Math.min(ta.scrollHeight, 200)}px`;
+  }, []);
+
+  useLayoutEffect(resizeTextarea, [value, fontSize, resizeTextarea]);
+
+  useEffect(() => {
+    const ta = textareaRef.current;
+    if (!ta) return;
+    let previousWidth = -1;
+    const observer = new ResizeObserver(([entry]) => {
+      // Height updates also notify the observer; only remeasure on width changes.
+      if (entry.contentRect.width === previousWidth) return;
+      previousWidth = entry.contentRect.width;
+      resizeTextarea();
+    });
+    observer.observe(ta);
+    return () => observer.disconnect();
+  }, [resizeTextarea]);
 
   useEffect(() => {
     return () => {
@@ -1050,7 +1056,7 @@ export const ChatInput = forwardRef<ChatInputHandle, Props>(function ChatInput({
     onSend(msg, attachedImages.length ? attachedImages : undefined);
   }, [value, attachedImages, isStreaming, runBuiltinCommand, onSend, clearInput, onAudioUnlock]);
 
-  const slashQuery = value.startsWith("/") && !/\s/.test(value.slice(1))
+  const slashQuery = !compact && value.startsWith("/") && !/\s/.test(value.slice(1))
     ? value.slice(1).toLowerCase()
     : null;
 
@@ -1084,6 +1090,16 @@ export const ChatInput = forwardRef<ChatInputHandle, Props>(function ChatInput({
     : t(slashQuery ? "chat.matches" : "chat.commands", { count: filteredSlashCommands.length });
   const hasInputText = Boolean(value.trim());
   const canQueueStreamingMessage = hasInputText || attachedImages.length > 0;
+  // Warn when images are attached but the selected model is known not to accept
+  // image input (#584), including a resolved default. Unknown models stay silent.
+  const showImageUnsupportedWarning = (
+    attachedImages.length > 0
+    && !modelSupportsImageInput(model, modelList)
+    && !imageWarningDismissed
+  );
+  useEffect(() => {
+    if (attachedImages.length === 0) setImageWarningDismissed(false);
+  }, [attachedImages.length]);
 
   // ── @ file autocomplete ──────────────────────────────────────────────────
   // Recomputed from the text before the caret on every change/caret move.
@@ -1581,9 +1597,7 @@ export const ChatInput = forwardRef<ChatInputHandle, Props>(function ChatInput({
       if (sendShortcut) {
         e.preventDefault();
         if (isStreaming && (onSteer || onFollowUp)) {
-          // Enter defaults to the non-interrupting follow-up; steering (which
-          // aborts the current run) must be an explicit button click.
-          sendQueued(onFollowUp ? "followup" : "steer");
+          sendQueued((e.altKey && onFollowUp) || !onSteer ? "followup" : "steer");
         } else {
           handleSend();
         }
@@ -1600,29 +1614,14 @@ export const ChatInput = forwardRef<ChatInputHandle, Props>(function ChatInput({
   }, []);
 
   const handlePaste = useCallback((e: React.ClipboardEvent) => {
+    if (compact) return;
     const items = Array.from(e.clipboardData?.items ?? []);
     const imageItems = items.filter((item) => item.type.startsWith("image/"));
-    if (imageItems.length) {
-      e.preventDefault();
-      const files = imageItems.map((item) => item.getAsFile()).filter((f): f is File => f !== null);
-      processImageFiles(files);
-      return;
-    }
-    // WebKitGTK (Linux) delivers an empty clipboardData.items list on paste
-    // even when the clipboard holds an image (WebKit bug 320303). Fall back to
-    // the Tauri clipboard-manager readImage() only in the desktop shell, and
-    // only when the browser gave us nothing — so plain-text paste is untouched.
-    if (items.length === 0) {
-      e.preventDefault();
-      void import("@/lib/desktop-native").then(({ readClipboardImageFileNative }) =>
-        readClipboardImageFileNative(),
-      ).then((file) => {
-        if (file) processImageFiles([file]);
-      }).catch(() => {
-        /* ignore — nothing to paste */
-      });
-    }
-  }, [processImageFiles]);
+    if (!imageItems.length) return;
+    e.preventDefault();
+    const files = imageItems.map((item) => item.getAsFile()).filter((f): f is File => f !== null);
+    processImageFiles(files);
+  }, [compact, processImageFiles]);
 
   useEffect(() => {
     if (slashQuery === null) {
@@ -1803,11 +1802,12 @@ export const ChatInput = forwardRef<ChatInputHandle, Props>(function ChatInput({
       style={{
         flexShrink: 0,
         background: "transparent",
-        padding: "0 16px 8px",
+        padding: compact ? 0 : "0 16px 8px",
+        paddingRight: compact ? 0 : isMobile ? 16 : 52, // desktop: 16px base + 36px for ChatMinimap alignment
       }}
     >
       {/* Hidden file input */}
-      <input
+      {!compact && <input
         ref={fileInputRef}
         type="file"
         accept="image/*"
@@ -1818,15 +1818,21 @@ export const ChatInput = forwardRef<ChatInputHandle, Props>(function ChatInput({
           processImageFiles(files);
           e.target.value = "";
         }}
-      />
-      <div className="chat-composer-wrap" style={{ maxWidth: 820, margin: "0 auto" }}>
+      />}
+      <div style={{ maxWidth: "var(--chat-content-max-width, 820px)", margin: "0 auto" }}>
         <ModelErrorBanner error={modelError} />
-        <ModelScopeWarningBanner
-          warnings={modelScopeWarnings}
-          onDismiss={onDismissModelScopeWarnings}
-          dismissLabel={t("chat.modelScopeDismiss")}
-          onOpenModelsConfig={onOpenModelsConfig}
-        />
+        <ModelScopeWarningBanner warnings={modelScopeWarnings} />
+        {showImageUnsupportedWarning && (() => {
+          const entry = modelList?.find((m) => m.provider === model?.provider && m.id === model?.modelId);
+          return (
+            <ModelNoticeBanner
+              tone="warning"
+              title={t("chat.imageNotSupportedTitle")}
+              body={t("chat.imageNotSupportedBody", { model: entry?.name || model?.modelId || "" })}
+              onClose={() => setImageWarningDismissed(true)}
+            />
+          );
+        })()}
         {/* Queued steering / follow-up messages (delivered by pi on upcoming turns) */}
         {((queuedMessages?.steering.length ?? 0) + (queuedMessages?.followUp.length ?? 0)) > 0 && (
           <div style={{
@@ -2395,20 +2401,23 @@ export const ChatInput = forwardRef<ChatInputHandle, Props>(function ChatInput({
             style={{
               minWidth: 0,
               display: "flex",
+              flexDirection: compact ? "column" : "row",
               gap: 8,
-              alignItems: "center",
+              alignItems: compact ? "stretch" : "center",
               background: "var(--bg)",
-              border: `1px solid ${bashMode ? "var(--tool-bg)" : isStreaming && (onSteer || onFollowUp)
+              border: compact ? "none" : `1px solid ${bashMode ? "var(--tool-bg)" : isStreaming && (onSteer || onFollowUp)
                 ? "rgba(234,179,8,0.4)"
                 : "color-mix(in srgb, var(--border) 70%, transparent)"}`,
-              borderRadius: 14,
-              padding: "10px 10px 10px 14px",
-              boxShadow: "0 1px 2px rgba(15,23,42,0.04), 0 8px 24px -12px rgba(15,23,42,0.10)",
+              borderRadius: compact ? 0 : 14,
+              padding: compact ? 0 : "10px 10px 10px 14px",
+              boxShadow: compact ? "none" : "0 1px 2px rgba(15,23,42,0.04), 0 8px 24px -12px rgba(15,23,42,0.10)",
               transition: "border-color 0.15s, background 0.15s, box-shadow 0.15s",
             } as React.CSSProperties}
           >
           <textarea
             ref={textareaRef}
+            className="chat-input-textarea"
+            aria-label={compact ? t("chat.quoteQuestion") : undefined}
             value={value}
             onChange={(e) => {
               valueRef.current = e.target.value;
@@ -2445,7 +2454,7 @@ export const ChatInput = forwardRef<ChatInputHandle, Props>(function ChatInput({
             }
             rows={1}
             style={{
-              flex: 1,
+              flex: compact ? "none" : 1,
               minWidth: 0,
               width: "100%",
               background: "none",
@@ -2453,10 +2462,10 @@ export const ChatInput = forwardRef<ChatInputHandle, Props>(function ChatInput({
               outline: "none",
               resize: "none",
               color: "var(--text)",
-              fontSize: 14,
+              fontSize: "var(--chat-content-font-size, 14px)",
               lineHeight: 1.6,
               fontFamily: "inherit",
-              minHeight: 24,
+              minHeight: compact ? 96 : 24,
               maxHeight: 200,
               overflow: "auto",
             }}
@@ -2551,7 +2560,7 @@ export const ChatInput = forwardRef<ChatInputHandle, Props>(function ChatInput({
         )}
 
         {/* Bottom bar: left | center (context) | right */}
-        <div className="chat-composer-controls" style={{
+        {!compact && <div className="chat-composer-controls" style={{
           marginTop: 8,
           display: isNarrow ? "grid" : "flex",
           gridTemplateColumns: isNarrow ? "minmax(0, 1fr) auto" : undefined,
@@ -3118,10 +3127,10 @@ export const ChatInput = forwardRef<ChatInputHandle, Props>(function ChatInput({
             </div>
           </div>
 
+        </div>}
           </div>
         </div>
       </div>
-    </div>
     </div>
   );
 });

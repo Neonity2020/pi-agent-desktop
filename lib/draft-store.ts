@@ -1,4 +1,4 @@
-import { APP_PREF_KEYS, getPrefJson, setPrefJson } from "@/lib/app-prefs";
+import { APP_PREF_KEYS, getPrefJson, setPrefJson } from "./app-prefs";
 import {
   MAX_ATTACHED_IMAGES,
   isBase64ImageWithinLimits,
