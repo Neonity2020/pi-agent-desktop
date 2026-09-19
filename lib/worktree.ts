@@ -352,7 +352,9 @@ export async function addWorktree(cwd: string, branch: string): Promise<{ path: 
   }
   mkdirSync(baseDir, { recursive: true });
 
-  // Reuse the branch if it already exists, otherwise create it at HEAD.
+  // Reuse the branch if it already exists, otherwise create it (from the
+  // already-fetched remote tip when available, else local HEAD). We do not
+  // fetch here: worktree creation must stay a local, offline-safe operation.
   let branchExists = false;
   try {
     await git(repoRoot, ["rev-parse", "--verify", "--quiet", `refs/heads/${trimmed}`]);
@@ -362,10 +364,23 @@ export async function addWorktree(cwd: string, branch: string): Promise<{ path: 
   }
 
   try {
+    // Large repos (30k+ files) can take minutes to checkout.
+    const WORKTREE_TIMEOUT = 5 * 60_000;
     if (branchExists) {
-      await git(repoRoot, ["worktree", "add", "--", worktreePath, trimmed]);
+      await git(repoRoot, ["worktree", "add", "--", worktreePath, trimmed], WORKTREE_TIMEOUT);
     } else {
-      await git(repoRoot, ["worktree", "add", "-b", trimmed, "--", worktreePath]);
+      // New branch: prefer the remote-tracking tip (refs/remotes/origin/<branch>)
+      // over local HEAD when the user already fetched it; fall back to HEAD.
+      let startFrom: string | undefined;
+      try {
+        await git(repoRoot, ["rev-parse", "--verify", "--quiet", `refs/remotes/origin/${trimmed}`]);
+        startFrom = `refs/remotes/origin/${trimmed}`;
+      } catch {
+        startFrom = undefined;
+      }
+      const addArgs = ["worktree", "add", "-b", trimmed, "--", worktreePath];
+      if (startFrom) addArgs.push(startFrom);
+      await git(repoRoot, addArgs, WORKTREE_TIMEOUT);
     }
   } catch (error) {
     throw new Error(extractGitError(error));
