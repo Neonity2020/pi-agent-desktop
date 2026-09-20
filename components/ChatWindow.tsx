@@ -1,12 +1,13 @@
 "use client";
 import { registerAbortHandler } from "@/hooks/useKeyboardShortcuts";
+import { PRODUCT_NAME } from "@/lib/branding";
 import Image from "next/image";
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { createPortal } from "react-dom";
 import type { AgentMessage, AssistantContentBlock, AssistantMessage, BashExecutionMessage, BlockingExtensionUiRequest, ExtensionUiRequest, SessionInfo, SessionTreeNode, ToolResultMessage, UserMessage, CustomMessage } from "@/lib/types";
 import { normalizeCustomPanelLines } from "@/lib/ansi";
 import { asBracketedPaste, toTerminalKeyData } from "@/lib/terminal-input";
-import { countToolCallBlocks, getAssistantErrorMessage, getDisplayableAssistantBlocks, isMessageGroupAnchor, splitFinalAssistantBlocks } from "@/lib/message-display";
+import { countToolCallBlocks, getAssistantErrorMessage, getDisplayableAssistantBlocks, isAssistantTruncated, isMessageGroupAnchor, splitFinalAssistantBlocks } from "@/lib/message-display";
 import { extractTurnWrittenFiles, type WrittenFile } from "@/lib/turn-written-files";
 import { buildQuotedSelection } from "@/lib/quoted-selection";
 import { MessageView } from "./MessageView";
@@ -60,7 +61,7 @@ interface Props {
   onSelectProject?: () => void;
   projectOptions?: string[];
   onProjectChange?: (projectRoot: string) => void;
-  onOpenFile?: (filePath: string) => void;
+  onOpenFile?: (filePath: string, page?: number) => void;
   /** Fired after non-image drops are copied into the session cwd (so the explorer can refresh). */
   onProjectFilesImported?: () => void;
   /** Open the provider/auth configuration modal (offered by the scope-warning banner). */
@@ -262,6 +263,71 @@ function ProcessDetailsGroup({ messageCount, toolCallCount, defaultExpanded = fa
   );
 }
 
+function NewSessionUpdateLink({
+  label,
+}: {
+  label: (version: string) => string;
+}) {
+  const [update, setUpdate] = useState<AppUpdateResponse | null>(null);
+
+  useEffect(() => {
+    const controller = new AbortController();
+    void fetch("/api/app-update", { signal: controller.signal })
+      .then(async (response) => {
+        if (!response.ok) return null;
+        return response.json() as Promise<AppUpdateResponse>;
+      })
+      .then((result) => {
+        if (result?.updateAvailable && result.latestVersion && result.releaseUrl) {
+          setUpdate(result);
+        }
+      })
+      .catch(() => {
+        // Update checks are best-effort and must not interrupt a new session.
+      });
+    return () => controller.abort();
+  }, []);
+
+  if (!update) return null;
+  const accessibleLabel = label(update.latestVersion);
+
+  return (
+    <a
+      href={update.releaseUrl}
+      target="_blank"
+      rel="noopener noreferrer"
+      title={accessibleLabel}
+      aria-label={accessibleLabel}
+      onMouseEnter={(event) => { event.currentTarget.style.background = "var(--bg-hover)"; }}
+      onMouseLeave={(event) => { event.currentTarget.style.background = "transparent"; }}
+      style={{
+        display: "inline-flex",
+        alignItems: "center",
+        alignSelf: "center",
+        gap: 3,
+        minHeight: 32,
+        minWidth: 0,
+        padding: "0 4px",
+        background: "transparent",
+        borderRadius: 5,
+        color: "var(--accent)",
+        fontSize: 12,
+        fontWeight: 600,
+        lineHeight: 1.2,
+        textDecoration: "none",
+        transition: "background 0.12s",
+        whiteSpace: "nowrap",
+      }}
+    >
+      <span style={{ overflow: "hidden", textOverflow: "ellipsis" }}>v{update.latestVersion}</span>
+      <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true" style={{ flexShrink: 0 }}>
+        <path d="M7 17 17 7" />
+        <path d="M7 7h10v10" />
+      </svg>
+    </a>
+  );
+}
+
 export function ChatWindow({ session, searchTarget, onSearchTargetHandled, initialScrollPosition, onScrollPositionChange, sessionRunning, newSessionCwd, newSessionDraftKey, onAgentEnd, onAttentionNeeded, onSessionCreated, onSessionForked, modelsRefreshKey, chatInputRef, onBranchDataChange, onSystemPromptChange, onSystemToolsChange, onSystemInfoLoaderChange, onSessionStatsChange, onSessionStatsPanelOpen, onContextUsageChange, onOpenFile, onOpenSession, onAskInNewChat, onSelectProject, projectOptions, onProjectChange, onProjectFilesImported, onOpenModelsConfig, quoteSelectionEnabled = false, initialPrompt, onInitialPromptConsumed, soundEnabled = true, onSoundToggle, playDoneSound = () => {}, unlockAudio }: Props) {
   const { t } = useI18n();
   const isMobile = useIsMobile();
@@ -308,6 +374,7 @@ export function ChatWindow({ session, searchTarget, onSearchTargetHandled, initi
     agentPhase,
     addNotice,
     isNew,
+    showScrollToBottom,
     sessionIdRef, scrollContainerRef,
     lastUserMsgRef, promptAnchorActive,
     handleSend, handleAbort, handleAbortRetry, handleFork, handleNavigate, handleModelChange,
@@ -1267,7 +1334,7 @@ export function ChatWindow({ session, searchTarget, onSearchTargetHandled, initi
 
                 const finalAssistant = messages[finalAssistantIdx] as AssistantMessage;
                 const finalSplit = splitFinalAssistantBlocks(finalAssistant);
-                const finalAnswerMessage = finalSplit.answerBlocks.length > 0 || getAssistantErrorMessage(finalAssistant)
+                const finalAnswerMessage = finalSplit.answerBlocks.length > 0 || getAssistantErrorMessage(finalAssistant) || isAssistantTruncated(finalAssistant)
                   ? withAssistantBlocks(finalAssistant, finalSplit.answerBlocks)
                   : null;
 
@@ -1404,7 +1471,7 @@ export function ChatWindow({ session, searchTarget, onSearchTargetHandled, initi
             position: "fixed",
             top: quotedSelection.top,
             left: quotedSelection.left,
-            zIndex: 130,
+            zIndex: 260,
             display: "flex",
             flexWrap: "wrap",
             gap: 3,
@@ -1475,7 +1542,44 @@ export function ChatWindow({ session, searchTarget, onSearchTargetHandled, initi
       )}
 
       <div className="relative shrink-0">
-
+        {!isEmptyNew && (
+          <div
+            style={{
+              position: "absolute",
+              bottom: "100%",
+              left: 0,
+              right: isMobile ? 0 : CHAT_MINIMAP_WIDTH,
+              display: "flex",
+              justifyContent: "center",
+              paddingBottom: 10,
+              pointerEvents: "none",
+              zIndex: 20,
+            }}
+          >
+            <button
+              type="button"
+              className={`chat-scroll-to-bottom${showScrollToBottom && !pendingScrollRestore ? " is-visible" : ""}`}
+              title={t("chat.scrollToLatest")}
+              aria-label={t("chat.scrollToLatest")}
+              onClick={() => scrollToBottom("smooth")}
+            >
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                <path d="M12 5v14M5 12l7 7 7-7" />
+              </svg>
+            </button>
+          </div>
+        )}
+        {isEmptyNew && (
+          <div className="mb-3 w-full" style={{ paddingLeft: 16, paddingRight: isMobile ? 16 : 52 }}>
+            <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12, maxWidth: "var(--chat-content-max-width, 820px)", margin: "0 auto", fontFamily: "var(--font-mono)" }}>
+              <div style={{ display: "flex", alignItems: "center", gap: isMobile ? 7 : 10, minWidth: 0, flex: 1, lineHeight: 1.4, overflow: "hidden" }}>
+                <Image src="/icons/apple-touch-icon.png" width={32} height={32} alt="" priority style={{ flexShrink: 0 }} />
+                <span style={{ fontSize: 22, color: "var(--text)", fontWeight: 700, flexShrink: 0, whiteSpace: "nowrap" }}>{PRODUCT_NAME}</span>
+                <NewSessionUpdateLink label={(version) => t("appUpdate.releaseNotes", { version })} />
+              </div>
+            </div>
+          </div>
+        )}
         {chatInputElement}
         <ExtensionStatusBar statuses={extensionStatuses} widgets={extensionWidgets} />
       </div>

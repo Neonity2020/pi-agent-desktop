@@ -26,10 +26,12 @@ import { mergeSessionStats, type SessionFileStats } from "@/lib/session-stats";
 import { userMessageKey } from "@/lib/prompt-recovery";
 import { AgentEventConnection } from "@/lib/agent-event-connection";
 import { getToolExecutionProgress } from "@/lib/tool-execution-progress";
+import { updateExtensionWidgets } from "@/lib/extension-widgets";
 import {
   CHAT_SCROLL_REATTACH_TOLERANCE,
   CHAT_SCROLL_TAIL_TOLERANCE,
   getLiveFollowAttached,
+  shouldShowScrollToLatest,
 } from "@/lib/chat-lazy-load";
 import {
   INITIAL_STREAMING_STATE,
@@ -371,10 +373,12 @@ export function useAgentSession(opts: UseAgentSessionOptions) {
   const [pendingModel, setPendingModel] = useState<{ provider: string; modelId: string } | null>(null);
   const [modelSwitching, setModelSwitching] = useState(false);
   const [isCompacting, setIsCompacting] = useState(false);
+  const [autoCompactionEnabled, setAutoCompactionEnabled] = useState(true);
   const [compactError, setCompactError] = useState<string | null>(null);
   const [compactResult, setCompactResult] = useState<CompactResultInfo | null>(null);
   const [agentPhase, setAgentPhase] = useState<AgentPhase>(null);
   const [promptAnchorActive, setPromptAnchorActive] = useState(false);
+  const [showScrollToBottom, setShowScrollToBottom] = useState(false);
   const [slashCommands, setSlashCommands] = useState<SlashCommandInfo[]>([]);
   const [slashCommandsLoading, setSlashCommandsLoading] = useState(false);
   const [noticeState, dispatchNotice] = useReducer(noticeReducer, { visible: [], pending: [] });
@@ -645,6 +649,7 @@ export function useAgentSession(opts: UseAgentSessionOptions) {
           if (liveState.extensionStatuses !== undefined) setExtensionStatuses(liveState.extensionStatuses ?? []);
           if (liveState.extensionWidgets !== undefined) setExtensionWidgets(liveState.extensionWidgets ?? []);
           if (liveState.queuedMessages !== undefined) setQueuedMessages(normalizeQueuedMessages(liveState.queuedMessages));
+          if (liveState.autoCompactionEnabled !== undefined) setAutoCompactionEnabled(liveState.autoCompactionEnabled ?? true);
         } else if (!agentState.running) {
           setQueuedMessages({ steering: [], followUp: [] });
         }
@@ -1000,16 +1005,12 @@ export function useAgentSession(opts: UseAgentSessionOptions) {
         });
         break;
       case "setWidget":
-        setExtensionWidgets((prev) => {
-          const rest = prev.filter((item) => item.key !== request.widgetKey);
-          return request.widgetLines
-            ? [...rest, {
-                key: request.widgetKey,
-                lines: request.widgetLines,
-                placement: request.widgetPlacement ?? "aboveEditor",
-              }]
-            : rest;
-        });
+        setExtensionWidgets((prev) => updateExtensionWidgets(
+          prev,
+          request.widgetKey,
+          request.widgetLines,
+          request.widgetPlacement,
+        ));
         break;
       case "setTitle":
         if (request.title) document.title = request.title;
@@ -1205,6 +1206,7 @@ export function useAgentSession(opts: UseAgentSessionOptions) {
       // would otherwise leave the "Stop compaction" UI stuck. No state
       // (wrapper destroyed) means nothing is compacting.
       setIsCompacting(state?.isCompacting ?? false);
+      setAutoCompactionEnabled(state?.autoCompactionEnabled ?? true);
       setQueuedMessages(normalizeQueuedMessages(state?.queuedMessages));
       const busy = data.running && state
         && (state.isStreaming || state.isPromptRunning || state.isCompacting);
@@ -1996,6 +1998,25 @@ export function useAgentSession(opts: UseAgentSessionOptions) {
           return complete({ handled: true, message: "Compacted context" });
         }
 
+        case "auto-compact": {
+          if (!sid) return complete({ handled: true, error: "No active session" });
+          // Read the live wrapper (this POST starts it if idle) so the toggle
+          // follows settings.json, not the React default of `true`.
+          const liveState = await sendAgentCommand<AgentStateResponse>(sid, { type: "get_state" });
+          const nextEnabled = !(liveState?.autoCompactionEnabled ?? true);
+          await sendAgentCommand(sid, {
+            type: "set_auto_compaction",
+            enabled: nextEnabled,
+          });
+          setAutoCompactionEnabled(nextEnabled);
+          return complete({
+            handled: true,
+            message: nextEnabled
+              ? "Auto-compaction enabled"
+              : "Auto-compaction disabled",
+          });
+        }
+
         case "reload": {
           if (!sid) return complete({ handled: true, error: "No active session to reload" });
           await sendAgentCommand(sid, { type: "reload" });
@@ -2258,6 +2279,8 @@ export function useAgentSession(opts: UseAgentSessionOptions) {
       );
       isNearBottomRef.current = isAttached;
       previousScrollTopRef.current = scrollTop;
+      const shouldShow = shouldShowScrollToLatest(scrollTop, clientHeight, scrollHeight);
+      setShowScrollToBottom((previous) => (previous === shouldShow ? previous : shouldShow));
       if (!wasAttached && isAttached && isAgentRunning) {
         scrollToBottom("auto");
       } else if (!isAttached && liveFollowFrameRef.current !== null) {
@@ -2476,6 +2499,7 @@ export function useAgentSession(opts: UseAgentSessionOptions) {
     agentPhase,
     isNew,
     promptAnchorActive,
+    showScrollToBottom,
     // Refs
     sessionIdRef, scrollContainerRef,
     lastUserMsgRef, pendingScrollToUserRef, initialScrollDoneRef,
