@@ -1592,301 +1592,6 @@ export function AppShell() {
     );
   };
 
-  const renderChatToolbarActions = (mobile: boolean) => {
-    if (!mobile && !showChat) return null;
-    return (
-      <div style={{ display: "flex", alignItems: "stretch", height: "100%" }}>
-        <button
-          type="button"
-          onClick={() => {
-            handleViewFullHistory();
-            if (mobile && isNarrowMobile) setMobileToolbarMoreOpen(true);
-          }}
-          disabled={!selectedSession}
-          title={selectedSession ? translate("history.full") : translate("history.unsaved")}
-          aria-label={translate("history.full")}
-          style={{
-            display: "flex",
-            alignItems: "center",
-            justifyContent: "center",
-            gap: 6,
-            width: mobile ? TOP_BAR_ICON_BUTTON_SIZE : undefined,
-            height: "100%",
-            padding: mobile ? 0 : "0 12px",
-            background: "none",
-            border: "none",
-            borderTop: "2px solid transparent",
-            borderRight: "1px solid var(--border)",
-            color: selectedSession ? "var(--text-muted)" : "var(--text-dim)",
-            cursor: selectedSession ? "pointer" : "not-allowed",
-            opacity: selectedSession ? 1 : 0.45,
-            flexShrink: 0,
-            fontSize: 11,
-            whiteSpace: "nowrap",
-            transition: "color 0.1s, background 0.1s, opacity 0.1s",
-          }}
-          onMouseEnter={(event) => {
-            if (!selectedSession) return;
-            event.currentTarget.style.color = "var(--text)";
-            event.currentTarget.style.background = "var(--bg-hover)";
-          }}
-          onMouseLeave={(event) => {
-            event.currentTarget.style.color = selectedSession ? "var(--text-muted)" : "var(--text-dim)";
-            event.currentTarget.style.background = "none";
-          }}
-          data-mobile-toolbar-action={mobile ? "history" : undefined}
-        >
-          <svg
-            width="12"
-            height="12"
-            viewBox="0 0 24 24"
-            fill="none"
-            stroke="currentColor"
-            strokeWidth="2"
-            strokeLinecap="round"
-            strokeLinejoin="round"
-            style={{
-              color: selectedSession ? "var(--text-muted)" : "var(--text-dim)",
-              flexShrink: 0,
-            }}
-            aria-hidden="true"
-          >
-            <path d="M3 12a9 9 0 1 0 3-6.7L3 8" />
-            <path d="M3 3v5h5" />
-            <path d="M12 7v5l3 2" />
-          </svg>
-          {!mobile && <span>{translate("history.label")}</span>}
-        </button>
-        {(() => {
-          // 上下文压缩后当前消息可能不再包含 user 消息，需同时参考会话文件的消息总数。
-          const hasMessages = Boolean(
-            selectedSession
-            && ((sessionStats?.userMessages ?? 0) > 0 || selectedSession.messageCount > 0),
-          );
-          const disabled = !selectedSession || selectedSession.transient || !hasMessages || autoNameStatus.kind === "naming";
-          const isSuccess = autoNameStatus.kind === "success";
-          const isError = autoNameStatus.kind === "error";
-          const label = autoNameStatus.kind === "naming"
-            ? translate("title.generating")
-            : isSuccess
-              ? translate("title.updated")
-              : isError
-                ? translate("title.failed")
-                : translate("title.generate");
-          const title = !selectedSession || selectedSession.transient
-            ? translate("title.unsaved")
-            : !hasMessages
-              ? translate("title.noMessages")
-              : isError
-                ? autoNameStatus.message
-                : translate("title.generateSession");
-
-          return (
-            <button
-              type="button"
-              onClick={() => {
-                void handleAutoName();
-                if (mobile && isNarrowMobile) setMobileToolbarMoreOpen(true);
-              }}
-              disabled={disabled}
-              title={title}
-              aria-label={label}
-              style={{
-                display: "flex", alignItems: "center", justifyContent: "center", gap: 6,
-                width: mobile ? TOP_BAR_ICON_BUTTON_SIZE : undefined,
-                height: "100%", padding: mobile ? 0 : "0 12px",
-                background: "none", border: "none",
-                borderTop: "2px solid transparent",
-                borderRight: "1px solid var(--border)",
-                color: isError ? "#dc2626" : isSuccess ? "var(--accent)" : disabled ? "var(--text-dim)" : "var(--text-muted)",
-                cursor: disabled ? "not-allowed" : "pointer",
-                opacity: disabled && autoNameStatus.kind !== "naming" ? 0.45 : 1,
-                flexShrink: 0, fontSize: 11, whiteSpace: "nowrap",
-                transition: "color 0.1s, background 0.1s, opacity 0.1s",
-              }}
-              onMouseEnter={(event) => {
-                if (disabled) return;
-                event.currentTarget.style.color = isError ? "#dc2626" : "var(--text)";
-                event.currentTarget.style.background = "var(--bg-hover)";
-              }}
-              onMouseLeave={(event) => {
-                event.currentTarget.style.color = isError ? "#dc2626" : isSuccess ? "var(--accent)" : disabled ? "var(--text-dim)" : "var(--text-muted)";
-                event.currentTarget.style.background = "none";
-              }}
-              data-mobile-toolbar-action={mobile ? "name" : undefined}
-            >
-              {autoNameStatus.kind === "naming" ? (
-                <svg className="animate-spin" width="13" height="13" viewBox="0 0 24 24" fill="none" aria-hidden="true">
-                  <circle cx="12" cy="12" r="9" stroke="currentColor" strokeWidth="2" opacity="0.25" />
-                  <path d="M21 12a9 9 0 0 0-9-9" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
-                </svg>
-              ) : isSuccess ? (
-                <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
-                  <polyline points="20 6 9 17 4 12" />
-                </svg>
-              ) : (
-                <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
-                  <path d="m15 4 5 5L7 22l-5-5Z" />
-                  <path d="m14 5 5 5" />
-                  <path d="M6 4V2M5 3H3M19 19v3M17.5 20.5h3" />
-                </svg>
-              )}
-              {!mobile && <span>{label}</span>}
-            </button>
-          );
-        })()}
-        {hasSubagentSessions && (
-          <button
-            type="button"
-            onClick={() => toggleTopPanel("agents", mobile)}
-            title={translate("agentSwitcher.title")}
-            aria-label={translate("agentSwitcher.title")}
-            aria-pressed={activeTopPanel === "agents"}
-            style={{
-              position: "relative",
-              display: "flex", alignItems: "center", justifyContent: "center", gap: 6,
-              width: mobile ? TOP_BAR_ICON_BUTTON_SIZE : undefined,
-              height: "100%", padding: mobile ? 0 : "0 12px",
-              background: activeTopPanel === "agents" ? "var(--bg-selected)" : "none",
-              border: "none",
-              borderTop: activeTopPanel === "agents" ? "2px solid var(--accent)" : "2px solid transparent",
-              borderRight: "1px solid var(--border)",
-              color: activeTopPanel === "agents" ? "var(--text)" : "var(--text-muted)",
-              cursor: "pointer", flexShrink: 0, fontSize: 11, whiteSpace: "nowrap",
-              transition: "color 0.1s, background 0.1s",
-            }}
-            data-mobile-toolbar-action={mobile ? "agents" : undefined}
-          >
-            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.9" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
-              <rect x="5" y="7" width="14" height="11" rx="2" /><path d="M9 11h.01M15 11h.01M9 15h6M12 7V4M10 4h4" />
-            </svg>
-            {!mobile && <span>{translate("agentSwitcher.title")}</span>}
-            <span
-              aria-hidden="true"
-              style={{
-                minWidth: 15, height: 15, padding: "0 4px", display: "grid", placeItems: "center",
-                borderRadius: 7, background: "var(--bg-selected)", color: "var(--accent)",
-                fontSize: 10, lineHeight: 1, fontVariantNumeric: "tabular-nums",
-                ...(mobile ? { position: "absolute", top: 2, right: 2, minWidth: 13, height: 13, padding: "0 3px", fontSize: 9 } : {}),
-              }}
-            >
-              {activeSessionFamily!.subagents.length}
-            </span>
-          </button>
-        )}
-        {sessionHasBranches && (mobile ? (
-          <button
-            type="button"
-            onClick={() => toggleTopPanel("branches", true)}
-            title={translate("i18n.branches")}
-            aria-label={translate("i18n.branches")}
-            aria-pressed={activeTopPanel === "branches"}
-            style={{
-              display: "flex", alignItems: "center", justifyContent: "center",
-              width: TOP_BAR_ICON_BUTTON_SIZE, height: "100%", padding: 0,
-              background: activeTopPanel === "branches" ? "var(--bg-selected)" : "none",
-              border: "none",
-              borderTop: activeTopPanel === "branches" ? "2px solid var(--accent)" : "2px solid transparent",
-              borderRight: "1px solid var(--border)",
-              color: activeTopPanel === "branches" ? "var(--text)" : "var(--text-muted)",
-              cursor: "pointer", flexShrink: 0,
-            }}
-            data-mobile-toolbar-action="branches"
-          >
-            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ color: branchTree.length > 0 ? "var(--accent)" : "var(--text-dim)" }} aria-hidden="true">
-              <line x1="6" y1="3" x2="6" y2="15" />
-              <circle cx="18" cy="6" r="3" />
-              <circle cx="6" cy="18" r="3" />
-              <path d="M18 9a9 9 0 0 1-9 9" />
-            </svg>
-          </button>
-        ) : (
-          <BranchNavigator
-            tree={branchTree}
-            activeLeafId={branchActiveLeafId}
-            onLeafChange={handleBranchLeafChange}
-            inline
-            containerRef={topBarRef}
-            open={activeTopPanel === "branches"}
-            onToggle={() => toggleTopPanel("branches")}
-            hasSession
-          />
-        ))}
-        <button
-          ref={systemBtnRef}
-          type="button"
-          onClick={() => handleSystemInfoToggle("system", mobile)}
-          disabled={mobile && !showChat}
-          title={translate("system.prompt")}
-          aria-label={translate("system.prompt")}
-          aria-pressed={activeTopPanel === "system"}
-          style={{
-            display: "flex", alignItems: "center", justifyContent: "center", gap: 6,
-            width: mobile ? TOP_BAR_ICON_BUTTON_SIZE : undefined,
-            height: "100%", padding: mobile ? 0 : "0 12px",
-            background: activeTopPanel === "system" ? "var(--bg-selected)" : "none",
-            border: "none",
-            borderTop: activeTopPanel === "system" ? "2px solid var(--accent)" : "2px solid transparent",
-            borderRight: "1px solid var(--border)",
-            cursor: mobile && !showChat ? "not-allowed" : "pointer",
-            color: activeTopPanel === "system" ? "var(--text)" : "var(--text-muted)",
-            opacity: mobile && !showChat ? 0.45 : 1,
-            fontSize: 11, whiteSpace: "nowrap", transition: "color 0.1s, background 0.1s",
-          }}
-          onMouseEnter={(event) => {
-            if (mobile && !showChat) return;
-            event.currentTarget.style.color = "var(--text)";
-          }}
-          onMouseLeave={(event) => {
-            event.currentTarget.style.color = activeTopPanel === "system" ? "var(--text)" : "var(--text-muted)";
-          }}
-          data-mobile-toolbar-action={mobile ? "system" : undefined}
-        >
-          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ color: systemPrompt ? "var(--accent)" : "var(--text-dim)", flexShrink: 0 }} aria-hidden="true">
-            <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" />
-            <polyline points="14 2 14 8 20 8" />
-            <line x1="8" y1="13" x2="16" y2="13" />
-            <line x1="8" y1="17" x2="13" y2="17" />
-          </svg>
-          {!mobile && <span>{translate("system.label")}</span>}
-        </button>
-        <button
-          type="button"
-          onClick={() => handleSystemInfoToggle("tools", mobile)}
-          disabled={mobile && !showChat}
-          title={translate("tools.title")}
-          aria-label={translate("tools.title")}
-          aria-pressed={activeTopPanel === "tools"}
-          style={{
-            display: "flex", alignItems: "center", justifyContent: "center", gap: 6,
-            width: mobile ? TOP_BAR_ICON_BUTTON_SIZE : undefined,
-            height: "100%", padding: mobile ? 0 : "0 12px",
-            background: activeTopPanel === "tools" ? "var(--bg-selected)" : "none",
-            border: "none",
-            borderTop: activeTopPanel === "tools" ? "2px solid var(--accent)" : "2px solid transparent",
-            borderRight: "1px solid var(--border)",
-            cursor: mobile && !showChat ? "not-allowed" : "pointer",
-            color: activeTopPanel === "tools" ? "var(--text)" : "var(--text-muted)",
-            opacity: mobile && !showChat ? 0.45 : 1,
-            fontSize: 11, whiteSpace: "nowrap", transition: "color 0.1s, background 0.1s",
-          }}
-          onMouseEnter={(event) => {
-            if (mobile && !showChat) return;
-            event.currentTarget.style.color = "var(--text)";
-          }}
-          onMouseLeave={(event) => {
-            event.currentTarget.style.color = activeTopPanel === "tools" ? "var(--text)" : "var(--text-muted)";
-          }}
-          data-mobile-toolbar-action={mobile ? "tools" : undefined}
-        >
-          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ color: systemTools?.some((tool) => tool.active) ? "var(--accent)" : "var(--text-dim)", flexShrink: 0 }} aria-hidden="true">
-            <path d="M14.7 6.3a1 1 0 0 0 0 1.4l1.6 1.6a1 1 0 0 0 1.4 0l3.8-3.8a6 6 0 0 1-7.9 7.9l-6.9 6.9a2.1 2.1 0 0 1-3-3l6.9-6.9a6 6 0 0 1 7.9-7.9z" />
-          </svg>
-          {!mobile && <span>{translate("tools.label")}</span>}
-        </button>
-      </div>
-    );
-  };
 
   const renderSessionStatsButton = (mobile: boolean) => {
     if (!mobile && (!showChat || (!sessionStats && !contextUsage))) return null;
@@ -2189,62 +1894,13 @@ export function AppShell() {
           </button>
         </div>
       )}
-      <div style={{ display: "flex", flex: 1, minHeight: 0, overflow: "hidden" }}>
-      {/* Mobile overlay backdrop */}
-      <div
-        className={`sidebar-overlay-backdrop${mobileSidebarReady ? "" : " sidebar-mobile-pending"}`}
-        onClick={() => setSidebarOpen(false)}
-        style={{
-          position: "fixed",
-          inset: 0,
-          zIndex: 199,
-          background: "rgba(0,0,0,0.4)",
-          opacity: sidebarOpen ? 1 : 0,
-          pointerEvents: sidebarOpen ? "auto" : "none",
-          transition: "opacity 0.25s ease",
-        }}
-      />
-
-      {/* Left sidebar */}
-      <div
-        ref={sidebarResizer.panelRef}
-        id="session-sidebar"
-        className={`app-sidebar sidebar-container${sidebarOpen ? " sidebar-open" : " sidebar-closed"}${mobileSidebarReady ? "" : " sidebar-mobile-pending"}${sidebarResizer.isResizing ? " sidebar-resizing" : ""}`}
-        inert={rightPanelFullWidth}
-        style={{
-          "--sidebar-width": `${sidebarResizer.width}px`,
-          background: "var(--bg-panel)",
-          borderRight: "1px solid var(--border)",
-          display: "flex",
-          flexDirection: "column",
-          flexShrink: 0,
-          paddingTop: "env(safe-area-inset-top)",
-          paddingBottom: "env(safe-area-inset-bottom)",
-          zIndex: 200,
-        } as React.CSSProperties}
-      >
-        {sidebarContent}
-      </div>
-      {sidebarOpen && (
-        <div
-          {...sidebarResizer.separatorProps}
-          inert={rightPanelFullWidth}
-          aria-controls="session-sidebar"
-          className={`panel-resize-handle sidebar-resize-handle${sidebarResizer.isResizing ? " is-resizing" : ""}`}
-          data-resize-handle="sidebar"
-          title={`${translate("layout.resizeSidebar")}: ${translate("layout.resizeHint")}`}
-        />
-      )}
-
-      {/* Center: chat */}
-      <div inert={rightPanelFullWidth} style={{ flex: 1, display: "flex", flexDirection: "column", overflow: "hidden", minWidth: 0 }}>
         {/* Top bar with sidebar toggle */}
         <div
           ref={topBarRef}
           className={`app-topbar${desktopChrome.isMacOS && (!sidebarOpen || isMobile) ? " app-topbar--mac-inset" : ""}${!rightPanelOpen ? " app-topbar--panel-closed" : ""}`}
           {...desktopChrome.dragRegionProps}
           {...windowDrag}
-          style={{ display: "flex", alignItems: "center", flexShrink: 0, borderBottom: "1px solid var(--border)", height: "calc(36px + env(safe-area-inset-top))", paddingTop: "env(safe-area-inset-top)", background: "var(--bg-panel)" }}
+          style={{ display: "flex", alignItems: "center", flexShrink: 0, borderBottom: "1px solid var(--border)", height: "calc(36px + env(safe-area-inset-top))", paddingTop: "env(safe-area-inset-top)", background: "var(--bg-panel)", paddingLeft: !isMobile && sidebarOpen ? sidebarResizer.width : 0 }}
         >
           {/* Sidebar reopen — only while the sidebar (and its own toggle) is hidden */}
           {!sidebarOpen && !rightPanelOpen && (
@@ -2381,11 +2037,15 @@ export function AppShell() {
                 hasSession
               />
               {(() => {
+                // Persisted stats win so compressed sessions can still name
+                // themselves; the file message count covers sessions whose
+                // stats were never computed. Transient (not-yet-flushed)
+                // sessions must never trigger JSONL-dependent naming.
                 const hasMessages = Boolean(
                   selectedSession
-                  && (sessionStats?.userMessages ?? selectedSession.messageCount) > 0,
+                  && ((sessionStats?.userMessages ?? 0) > 0 || selectedSession.messageCount > 0),
                 );
-                const nameDisabled = !selectedSession || !hasMessages || autoNameStatus.kind === "naming";
+                const nameDisabled = !selectedSession || selectedSession.transient || !hasMessages || autoNameStatus.kind === "naming";
                 const isSuccess = autoNameStatus.kind === "success";
                 const isError = autoNameStatus.kind === "error";
                 const nameLabel = autoNameStatus.kind === "naming"
@@ -2483,7 +2143,7 @@ export function AppShell() {
                           className="app-topbar-more-item"
                           type="button"
                           role="menuitem"
-                          onClick={() => toggleTopPanel("system")}
+                          onClick={() => handleSystemInfoToggle("system")}
                         >
                           <span
                             className="app-topbar-more-icon"
@@ -2499,6 +2159,45 @@ export function AppShell() {
                           <span className="app-topbar-more-copy">
                             <span>{translate("system.prompt")}</span>
                             <small>{systemPrompt === null ? translate("appshell.systemLoads") : systemPrompt ? translate("appshell.viewInstructions") : translate("appshell.toolsDisabled")}</small>
+                          </span>
+                        </button>
+                        <button
+                          className="app-topbar-more-item"
+                          type="button"
+                          role="menuitem"
+                          onClick={() => toggleTopPanel("agents")}
+                        >
+                          <span
+                            className="app-topbar-more-icon"
+                            style={{ color: activeTopPanel === "agents" ? "var(--accent)" : "var(--text-muted)" }}
+                          >
+                            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                              <rect x="5" y="7" width="14" height="11" rx="2" />
+                              <path d="M9 11h.01M15 11h.01M9 15h6M12 7V4M10 4h4" />
+                            </svg>
+                          </span>
+                          <span className="app-topbar-more-copy">
+                            <span>{translate("agentSwitcher.title")}</span>
+                            <small>{translate("agentSwitcher.subagent")}</small>
+                          </span>
+                        </button>
+                        <button
+                          className="app-topbar-more-item"
+                          type="button"
+                          role="menuitem"
+                          onClick={() => handleSystemInfoToggle("tools")}
+                        >
+                          <span
+                            className="app-topbar-more-icon"
+                            style={{ color: activeTopPanel === "tools" ? "var(--accent)" : "var(--text-muted)" }}
+                          >
+                            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                              <path d="M14.7 6.3a1 1 0 0 0 0 1.4l1.6 1.6a1 1 0 0 0 1.4 0l3.8-3.8a6 6 0 0 1-7.9 7.9l-6.9 6.9a2.1 2.1 0 0 1-3-3l6.9-6.9a6 6 0 0 1 7.9-7.9z" />
+                            </svg>
+                          </span>
+                          <span className="app-topbar-more-copy">
+                            <span>{translate("tools.label")}</span>
+                            <small>{translate("tools.title")}</small>
                           </span>
                         </button>
                         {(() => {
@@ -2548,7 +2247,6 @@ export function AppShell() {
           {!isMobile && (
             <>
               {renderProjectTrustWarning(false)}
-              {renderChatToolbarActions(false)}
               {renderSessionStatsButton(false)}
             </>
           )}
@@ -2812,8 +2510,56 @@ export function AppShell() {
 
           <WindowControls />
         </div>
+      <div style={{ display: "flex", flex: 1, minHeight: 0, overflow: "hidden" }}>
+      {/* Mobile overlay backdrop */}
+      <div
+        className={`sidebar-overlay-backdrop${mobileSidebarReady ? "" : " sidebar-mobile-pending"}`}
+        onClick={() => setSidebarOpen(false)}
+        style={{
+          position: "fixed",
+          inset: 0,
+          zIndex: 199,
+          background: "rgba(0,0,0,0.4)",
+          opacity: sidebarOpen ? 1 : 0,
+          pointerEvents: sidebarOpen ? "auto" : "none",
+          transition: "opacity 0.25s ease",
+        }}
+      />
+
+      {/* Left sidebar */}
+      <div
+        ref={sidebarResizer.panelRef}
+        id="session-sidebar"
+        className={`app-sidebar sidebar-container${sidebarOpen ? " sidebar-open" : " sidebar-closed"}${mobileSidebarReady ? "" : " sidebar-mobile-pending"}${sidebarResizer.isResizing ? " sidebar-resizing" : ""}`}
+        inert={rightPanelFullWidth}
+        style={{
+          "--sidebar-width": `${sidebarResizer.width}px`,
+          background: "var(--bg-panel)",
+          borderRight: "1px solid var(--border)",
+          display: "flex",
+          flexDirection: "column",
+          flexShrink: 0,
+          paddingTop: "env(safe-area-inset-top)",
+          paddingBottom: "env(safe-area-inset-bottom)",
+          zIndex: 200,
+        } as React.CSSProperties}
+      >
+        {sidebarContent}
+      </div>
+      {sidebarOpen && (
+        <div
+          {...sidebarResizer.separatorProps}
+          inert={rightPanelFullWidth}
+          aria-controls="session-sidebar"
+          className={`panel-resize-handle sidebar-resize-handle${sidebarResizer.isResizing ? " is-resizing" : ""}`}
+          data-resize-handle="sidebar"
+          title={`${translate("layout.resizeSidebar")}: ${translate("layout.resizeHint")}`}
+        />
+      )}
+
+      {/* Center: chat */}
+      <div inert={rightPanelFullWidth} style={{ flex: 1, display: "flex", flexDirection: "column", overflow: "hidden", minWidth: 0 }}>
         {isMobile && renderProjectTrustWarning(true)}
-        </div>
 
         {/* Chat content */}
         <div style={{ flex: 1, overflow: "hidden", position: "relative" }}>
@@ -3169,6 +2915,7 @@ export function AppShell() {
               </div>
             </>
           )}
+      </div>
       </div>
     </div>
     {settingsSection && (

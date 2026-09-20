@@ -7,9 +7,11 @@ const source = await readFile(new URL("./AppShell.tsx", import.meta.url), "utf8"
 function fileContentBlock() {
   const start = source.indexOf("{/* Only the active viewer");
   // The fork's right panel appends an always-on file-tree column after the
-  // viewer, so the block ends at the tree conditional's close instead.
-  const end = source.indexOf("</>\n          )}\n      </div>\n    </div>", start);
-  if (end === -1) end = source.indexOf("</div>\n      </div>\n    </div>", start);
+  // viewer, so the block ends at the tree conditional's close instead. The
+  // panel (with the viewer inside it) now closes inside the horizontal row,
+  // so the sequence is panel close → row close.
+  let end = source.indexOf("</>\n          )}\n      </div>\n      </div>", start);
+  if (end === -1) end = source.indexOf("</>\n          )}\n      </div>\n    </div>", start);
   assert.notEqual(start, -1, "file content comment not found");
   assert.notEqual(end, -1, "end of file content block not found");
   return source.slice(start, end);

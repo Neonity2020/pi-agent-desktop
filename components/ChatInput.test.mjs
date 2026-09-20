@@ -763,3 +763,54 @@ test("renders image warnings for known text-only defaults without an explicit mo
     clearDraft(draftKey);
   }
 });
+
+test("handleSend sends exactly once and routes builtin commands through the pending guard", async () => {
+  const source = ts.createSourceFile("ChatInput.tsx", readFileSync(new URL("./ChatInput.tsx", import.meta.url), "utf8"), ts.ScriptTarget.Latest, true, ts.ScriptKind.TSX);
+  function findHandler(node) {
+    if (ts.isVariableDeclaration(node) && node.name.getText(source) === "handleSend") {
+      return node.initializer.arguments[0];
+    }
+    return ts.forEachChild(node, findHandler);
+  }
+  const script = new Script(ts.transpileModule(findHandler(source).getText(source), {
+    compilerOptions: { target: ts.ScriptTarget.ES2020 },
+  }).outputText);
+
+  function run({ value = "hello", attachedImages = [], builtinHandled = false, resolved = null }) {
+    let sends = 0;
+    let cleared = 0;
+    let builtinCalls = 0;
+    const handler = script.runInNewContext({
+      value, attachedImages,
+      onAudioUnlock() {},
+      runBuiltinCommand: async (msg) => {
+        builtinCalls += 1;
+        return builtinHandled;
+      },
+      resolveSessionReferences: async (msg) => resolved ?? msg,
+      sessionMentionTargetsRef: { current: [] },
+      onSend(message, images) { sends += 1; handler.sent = { message, images }; },
+      clearInput() { cleared += 1; },
+    });
+    return handler().then(() => ({ sends, cleared, builtinCalls, sent: handler.sent }));
+  }
+
+  // Plain message: one send of the resolved text, one clear, no double-send.
+  const plain = await run({ value: "  hello " });
+  assert.equal(plain.sends, 1);
+  assert.equal(plain.sent.message, "hello");
+  assert.equal(plain.cleared, 1);
+
+  // Session mentions resolve before sending; the raw text is never sent.
+  const mentioned = await run({ value: "see #abc123", resolved: "see /path/to/abc123.jsonl" });
+  assert.equal(mentioned.sends, 1);
+  assert.equal(mentioned.sent.message, "see /path/to/abc123.jsonl");
+
+  // Handled builtin command stops before onSend; unhandled falls through.
+  const builtin = await run({ value: "/compact", builtinHandled: true });
+  assert.equal(builtin.builtinCalls, 1);
+  assert.equal(builtin.sends, 0);
+  assert.equal(builtin.cleared, 0);
+  const passthrough = await run({ value: "/unknown", builtinHandled: false });
+  assert.equal(passthrough.sends, 1);
+});

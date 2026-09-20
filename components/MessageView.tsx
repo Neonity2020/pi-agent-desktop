@@ -887,7 +887,10 @@ function BlockView({ block, searchTarget, toolResults, isStreaming, streamingDur
     const tc = block as ToolCallContent;
     const result = toolResults?.get(tc.toolCallId);
     const duration = toolCallDurations?.get(tc.toolCallId);
-    return <ToolCallBlock block={tc} result={result} duration={duration} onOpenSession={onOpenSession} />;
+    // A loaded (non-streaming) message whose toolCall has no paired result
+    // means the run was interrupted before the tool finished — render that
+    // honestly instead of the success styling.
+    return <ToolCallBlock block={tc} result={result} duration={duration} onOpenSession={onOpenSession} aborted={!isStreaming && !result} />;
   }
   return null;
 }
@@ -1018,9 +1021,9 @@ function isSubagentToolDetails(value: unknown): value is SubagentToolDetails {
   return details.kind === "pi-web-subagent" && typeof details.sessionId === "string";
 }
 
-function ToolCallBlock({ block, result, duration, onOpenSession }: { block: ToolCallContent; result?: ToolResultMessage; duration?: number; onOpenSession?: (sessionId: string) => void }) {
+function ToolCallBlock({ block, result, duration, aborted, defaultExpanded, onOpenSession }: { block: ToolCallContent; result?: ToolResultMessage; duration?: number; aborted?: boolean; defaultExpanded?: boolean; onOpenSession?: (sessionId: string) => void }) {
   const { t } = useI18n();
-  const [expanded, setExpanded] = useState(() => isToolCallExpanded(block.toolCallId));
+  const [expanded, setExpanded] = useState(() => defaultExpanded ?? isToolCallExpanded(block.toolCallId));
   const toggleExpanded = () => {
     const next = !expanded;
     setToolCallExpanded(block.toolCallId, next);
@@ -1051,8 +1054,16 @@ function ToolCallBlock({ block, result, duration, onOpenSession }: { block: Tool
         borderRadius: 7,
         overflow: "hidden",
         fontSize: 12,
-        border: isError ? "1px solid rgba(248,113,113,0.45)" : "1px solid rgba(34,197,94,0.25)",
-        background: isError ? "rgba(248,113,113,0.05)" : "rgba(34,197,94,0.04)",
+        border: isError
+          ? "1px solid rgba(248,113,113,0.45)"
+          : aborted
+            ? "1px solid rgba(148,163,184,0.4)"
+            : "1px solid rgba(34,197,94,0.25)",
+        background: isError
+          ? "rgba(248,113,113,0.05)"
+          : aborted
+            ? "rgba(148,163,184,0.06)"
+            : "rgba(34,197,94,0.04)",
       }}
     >
       {/* ── Tool call header ── */}
@@ -1074,9 +1085,14 @@ function ToolCallBlock({ block, result, duration, onOpenSession }: { block: Tool
             textAlign: "left",
           }}
         >
-          <span style={{ color: isError ? "var(--danger)" : "var(--success)", fontFamily: "var(--font-mono)", fontWeight: 600, fontSize: 11, flexShrink: 0 }}>
+          <span style={{ color: isError ? "var(--danger)" : aborted ? "var(--text-dim)" : "var(--success)", fontFamily: "var(--font-mono)", fontWeight: 600, fontSize: 11, flexShrink: 0 }}>
             {block.toolName}
           </span>
+          {aborted && (
+            <span title={t("chat.toolCancelled")} style={{ flexShrink: 0, fontSize: 10, color: "var(--text-dim)", border: "1px solid var(--border)", borderRadius: 4, padding: "1px 5px" }}>
+              {t("chat.toolCancelled")}
+            </span>
+          )}
           <span style={{ color: "var(--text-dim)", fontFamily: "var(--font-mono)", fontSize: 11, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", flex: 1, minWidth: 0 }}>
             {isStreamingInput ? t("chat.generatingToolInput") : (patchLabel ?? getToolPreview(block))}
           </span>
@@ -1983,7 +1999,11 @@ function BashExecutionView({ message, sessionId }: { message: BashExecutionMessa
   const [loadingFull, setLoadingFull] = useState(false);
   const [fullError, setFullError] = useState<string | null>(null);
 
-  const isPending = !message.output && message.exitCode === undefined && !message.cancelled;
+  const isRunning = message.exitCode === undefined && !message.cancelled;
+  // No output yet while running → keep the pending spinner; once chunks have
+  // streamed in (bash_execution_update), show them as a partial result so a
+  // long `!command` explains itself instead of looking stuck.
+  const isPending = isRunning && !message.output;
   const isError = message.cancelled || (message.exitCode !== undefined && message.exitCode !== 0);
   const fullOutputUrl = sessionId && message.fullOutputPath
     ? `/api/agent/${encodeURIComponent(sessionId)}/bash-output?path=${encodeURIComponent(message.fullOutputPath)}`
@@ -2026,14 +2046,13 @@ function BashExecutionView({ message, sessionId }: { message: BashExecutionMessa
         role: "toolResult",
         toolCallId: block.toolCallId,
         toolName,
-        content: displayOutput ? [{ type: "text", text: displayOutput }] : [],
+        content: displayOutput ? [{ type: "text", text: isRunning ? `${displayOutput}\n…` : displayOutput }] : [],
         isError,
         timestamp: message.timestamp,
       };
-
   return (
     <div style={{ margin: "6px 0" }}>
-      <ToolCallBlock block={block} result={result} />
+      <ToolCallBlock block={block} result={result} defaultExpanded={isRunning} />
       {message.truncated && fullOutputUrl && (
         <div style={{ padding: "4px 10px", fontSize: 11, marginTop: -1 }}>
           {showFullButton && (

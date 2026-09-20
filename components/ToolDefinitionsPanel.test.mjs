@@ -6,8 +6,10 @@ const panelSource = await readFile(new URL("./ToolDefinitionsPanel.tsx", import.
 const systemSource = await readFile(new URL("./SystemPromptPanel.tsx", import.meta.url), "utf8");
 const appShellSource = await readFile(new URL("./AppShell.tsx", import.meta.url), "utf8");
 
-test("keeps System and Tools in separate adjacent toolbar actions", () => {
-  assert.match(appShellSource, /handleSystemInfoToggle\("system", mobile\)[\s\S]*?handleSystemInfoToggle\("tools", mobile\)/);
+test("keeps System and Tools reachable as separate top-panel actions", () => {
+  // The desktop duplicate toolbar (renderChatToolbarActions) was folded into
+  // the More menu; System and Tools entries must keep the lazy-loading toggle.
+  assert.match(appShellSource, /handleSystemInfoToggle\("system"\)[\s\S]*?handleSystemInfoToggle\("tools"\)/);
   assert.match(appShellSource, /activeTopPanel === "system"[\s\S]*?<SystemPromptPanel/);
   assert.match(appShellSource, /activeTopPanel === "tools"[\s\S]*?<ToolDefinitionsPanel/);
   assert.doesNotMatch(systemSource, /ToolEntry|tools/);

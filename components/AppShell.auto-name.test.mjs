@@ -14,7 +14,7 @@ test("压缩后的会话仍可根据持久化消息数生成标题", () => {
 test("尚未落盘的会话不会触发依赖 JSONL 的自动命名", () => {
   assert.match(
     source,
-    /const disabled = !selectedSession \|\| selectedSession\.transient \|\| !hasMessages/,
+    /const nameDisabled = !selectedSession \|\| selectedSession\.transient \|\| !hasMessages/,
   );
 });
 

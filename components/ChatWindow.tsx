@@ -299,7 +299,7 @@ export function ChatWindow({ session, searchTarget, onSearchTargetHandled, initi
   const {
     loading, error, messages, activeToolResults, entryIds, historyCursor, hasEarlierMessages, streamState,
     agentRunning, bashRunning, pendingBash, modelNames, modelList, modelError, modelScopeWarnings, modelThinkingLevels, modelThinkingLevelMaps, toolPreset, thinkingLevel,
-    retryInfo, contextUsage, forkingEntryId,
+    retryInfo, contextUsage, forkingEntryId, summarizationRetry, automation, handleSetAutomation,
     isCompacting, compactError, compactResult, displayModel: displayModelValue, modelSwitching, sessionStats,
     slashCommands, slashCommandsLoading, queuedMessages,
     notices, extensionDialog, extensionCustomUi, extensionStatuses, extensionWidgets, respondToExtensionUi, sendExtensionCustomInput, setNoticePaused,
@@ -310,8 +310,9 @@ export function ChatWindow({ session, searchTarget, onSearchTargetHandled, initi
     isNew,
     sessionIdRef, scrollContainerRef,
     lastUserMsgRef, promptAnchorActive,
-    handleSend, handleAbort, handleFork, handleNavigate, handleModelChange,
+    handleSend, handleAbort, handleAbortRetry, handleFork, handleNavigate, handleModelChange,
     handleCompact, handleSteer, handleFollowUp, handlePromptWithStreamingBehavior, handleAbortCompaction,
+    retryLoad,
     dismissModelScopeWarnings,
     handleRecallQueue,
     handleBuiltinSlashCommand,
@@ -492,14 +493,6 @@ export function ChatWindow({ session, searchTarget, onSearchTargetHandled, initi
   // every MessageView memo twice per agent turn.
   const sessionBusyRef = useRef(sessionBusy);
   sessionBusyRef.current = sessionBusy;
-  const stableHandleFork = useCallback((entryId: string) => {
-    if (sessionBusyRef.current) return;
-    handleFork(entryId);
-  }, [handleFork]);
-  const stableHandleNavigate = useCallback(async (entryId: string): Promise<boolean> => {
-    if (sessionBusyRef.current) return false;
-    return handleNavigate(entryId);
-  }, [handleNavigate]);
 
   useEffect(() => {
     if (
@@ -829,7 +822,6 @@ export function ChatWindow({ session, searchTarget, onSearchTargetHandled, initi
 
   const { isDragOver, handleDragEnter, handleDragOver, handleDragLeave, handleDrop } = useDragDrop(onDrop);
 
-  const visibleMessages = messages.filter((m) => isMessageGroupAnchor(m) || m.role === "assistant");
   // Stable Map identity: `messages` doesn't change during streaming updates
   // (the streaming message lives in streamState), so memoized MessageViews
   // skip re-rendering on every message_update event. An inline `new Map()`
@@ -957,183 +949,6 @@ export function ChatWindow({ session, searchTarget, onSearchTargetHandled, initi
     promptAnchorUpdateRef.current?.();
   }, [streamState.streamingMessage]);
 
-  // Group messages into turns (user prompt → collapsed process → final
-  // answer) once per relevant change, not on every render. Streaming deltas
-  // only touch streamState.streamingMessage, which is intentionally NOT a
-  // dependency here — the live bubble renders separately below.
-  const sessionIdForViews = session?.id ?? null;
-  const streamActive = streamState.isStreaming;
-  const renderedMessages = useMemo(() => {
-    const toolResultsMap = new Map<string, ToolResultMessage>();
-    for (const msg of messages) {
-      if (msg.role === "toolResult") {
-        toolResultsMap.set((msg as ToolResultMessage).toolCallId, msg as ToolResultMessage);
-      }
-    }
-
-    let lastUserIdx = -1;
-    for (let i = messages.length - 1; i >= 0; i--) {
-      if (messages[i].role === "user") { lastUserIdx = i; break; }
-    }
-    // Anchor for live-tail detection: the last user message, or a
-    // compaction summary when compaction has replaced it mid-turn.
-    // Computed independently from lastUserIdx (which is kept for the
-    // scroll-to-user ref) because a compaction summary can sit after
-    // the last user message and anchor the still-streaming segment.
-    let lastAnchorIdx = -1;
-    for (let i = messages.length - 1; i >= 0; i--) {
-      if (isGroupAnchor(messages[i])) { lastAnchorIdx = i; break; }
-    }
-
-    const turnIndexByMessageIndex = new Map<number, number>();
-    let nextTurnIndex = 0;
-    for (let messageIdx = 0; messageIdx < messages.length; messageIdx++) {
-      if (messages[messageIdx].role === "user" && getUserInputText(messages[messageIdx])) {
-        turnIndexByMessageIndex.set(messageIdx, nextTurnIndex++);
-      }
-    }
-
-    const renderMessage = (idx: number, options: { attachRef?: boolean; keyPrefix?: string; messageOverride?: AgentMessage; showTimestamp?: boolean } = {}): ReactNode => {
-      const msg = options.messageOverride ?? messages[idx];
-      const isVisible = msg.role === "user" || msg.role === "assistant";
-      const keyPrefix = options.keyPrefix ?? "message";
-      let showTimestamp = false;
-      if (msg.role === "assistant") {
-        showTimestamp = true;
-        for (let j = idx + 1; j < messages.length; j++) {
-          const r = messages[j].role;
-          if (r === "user") break;
-          if (r === "assistant") { showTimestamp = false; break; }
-        }
-        // Hide on the currently-streaming tail (the streaming bubble owns the live timestamp)
-        if (showTimestamp && streamActive && idx === messages.length - 1) {
-          showTimestamp = false;
-        }
-      }
-      if (options.showTimestamp !== undefined) showTimestamp = options.showTimestamp;
-      const view = (
-        <MessageView
-          key={`${keyPrefix}-view-${idx}`}
-          message={msg}
-          toolResults={toolResultsMap}
-          modelNames={modelNames}
-          cwd={messageCwd}
-          onOpenFile={onOpenFile}
-          entryId={entryIds[idx]}
-          onFork={sessionBusy || isNew ? undefined : handleFork}
-          forking={forkingEntryId === entryIds[idx]}
-          onNavigate={stableHandleNavigate}
-          onEditContent={handleEditContent}
-          showTimestamp={showTimestamp}
-          prevTimestamp={idx > 0 ? (messages[idx - 1] as AgentMessage & { timestamp?: number }).timestamp : undefined}
-          sessionId={sessionIdForViews ?? sessionIdRef.current ?? undefined}
-        />
-      );
-      if (!isVisible || options.attachRef === false) return view;
-      if (idx !== lastUserIdx) {
-        return (
-          <div key={`${keyPrefix}-${idx}`} data-conversation-turn={turnIndexByMessageIndex.get(idx)}>
-            {view}
-          </div>
-        );
-      }
-      return (
-        <div
-          key={`${keyPrefix}-${idx}`}
-          data-conversation-turn={turnIndexByMessageIndex.get(idx)}
-          ref={(el) => {
-            (lastUserMsgRef as { current: HTMLDivElement | null }).current = el;
-          }}
-        >
-          {view}
-        </div>
-      );
-    };
-
-    const rendered: ReactNode[] = [];
-    for (let idx = 0; idx < messages.length;) {
-      const msg = messages[idx];
-      if (!isGroupAnchor(msg)) {
-        rendered.push(renderMessage(idx));
-        idx += 1;
-        continue;
-      }
-
-      const userIdx = idx;
-      let endIdx = userIdx + 1;
-      while (endIdx < messages.length && !isGroupAnchor(messages[endIdx])) endIdx += 1;
-
-      const finalAssistantIdx = findFinalAssistantIndex(messages, userIdx, endIdx);
-
-      if (finalAssistantIdx === -1) {
-        for (let renderIdx = userIdx; renderIdx < endIdx; renderIdx++) {
-          rendered.push(renderMessage(renderIdx));
-        }
-        idx = endIdx;
-        continue;
-      }
-
-      const isLiveTail = (sessionBusy || streamActive) && endIdx === messages.length && userIdx === lastAnchorIdx;
-      if (isLiveTail) {
-        for (let renderIdx = userIdx; renderIdx < endIdx; renderIdx++) {
-          rendered.push(renderMessage(renderIdx));
-        }
-        idx = endIdx;
-        continue;
-      }
-
-      rendered.push(renderMessage(userIdx));
-
-      const processIndices: number[] = [];
-      for (let processIdx = userIdx + 1; processIdx < finalAssistantIdx; processIdx++) {
-        processIndices.push(processIdx);
-      }
-      const visibleProcessIndices = processIndices.filter((processIdx) => hasDisplayableProcessMessage(messages[processIdx]));
-      const finalAssistant = messages[finalAssistantIdx] as AssistantMessage;
-      const finalSplit = getFinalSplit(finalAssistant);
-      const finalProcessMessage = finalSplit.processMessage;
-      const finalAnswerMessage = finalSplit.answerMessage;
-
-      const processCount = visibleProcessIndices.length + (finalProcessMessage ? 1 : 0);
-      if (processCount > 0) {
-        rendered.push(
-          <ProcessDetailsGroup
-            key={`process-group-${userIdx}-${finalAssistantIdx}`}
-            messageCount={processCount}
-            t={t}
-            toolCallCount={countToolCalls(messages, visibleProcessIndices) + countToolCallBlocks(finalSplit.processBlocks)}
-          >
-            {visibleProcessIndices.map((processIdx) => renderMessage(processIdx, { attachRef: false, keyPrefix: "process" }))}
-            {finalProcessMessage && renderMessage(finalAssistantIdx, { attachRef: false, keyPrefix: "process-final", messageOverride: finalProcessMessage, showTimestamp: false })}
-          </ProcessDetailsGroup>,
-        );
-      }
-
-      if (finalAnswerMessage) {
-        rendered.push(renderMessage(finalAssistantIdx, { messageOverride: finalAnswerMessage }));
-      }
-      for (let renderIdx = finalAssistantIdx + 1; renderIdx < endIdx; renderIdx++) {
-        rendered.push(renderMessage(renderIdx));
-      }
-      idx = endIdx;
-    }
-    const { startIndex, hasMore } = getVisibleRenderWindow(rendered.length, visibleCount);
-    return (
-      <>
-        {hasMore && (
-          <div ref={sentinelRef} className="py-3 text-center text-xs text-text-muted">
-            {t("chat.loadEarlier", { count: startIndex })}
-          </div>
-        )}
-        {rendered.slice(startIndex)}
-      </>
-    );
-  }, [
-    messages, entryIds, streamActive, sessionBusy, isNew, forkingEntryId,
-    modelNames, messageCwd, onOpenFile, handleEditContent,
-    stableHandleFork, stableHandleNavigate, sessionIdForViews,
-    visibleCount, t, lastUserMsgRef, sessionIdRef,
-  ]);
 
   const availableThinkingLevels = displayModelValue
     ? (modelThinkingLevels[`${displayModelValue.provider}:${displayModelValue.modelId}`] ?? null)
@@ -1181,6 +996,7 @@ export function ChatWindow({ session, searchTarget, onSearchTargetHandled, initi
       isCompacting={isCompacting}
       compactError={compactError}
       compactResult={compactResult}
+      summarizationRetry={summarizationRetry}
       toolPreset={toolPreset}
       onToolPresetChange={session || isNew ? handleToolPresetChange : undefined}
       thinkingLevel={thinkingLevel}
@@ -1189,6 +1005,9 @@ export function ChatWindow({ session, searchTarget, onSearchTargetHandled, initi
       availableThinkingLevels={availableThinkingLevels}
       thinkingLevelMap={currentThinkingLevelMap}
       retryInfo={retryInfo}
+      onAbortRetry={handleAbortRetry}
+      automation={automation}
+      onSetAutomation={handleSetAutomation}
       queuedMessages={queuedMessages}
       inputHistory={inputHistory}
       onRecallQueue={handleRecallQueue}
@@ -1221,8 +1040,16 @@ export function ChatWindow({ session, searchTarget, onSearchTargetHandled, initi
 
   if (error) {
     return (
-      <div className="flex h-full items-center justify-center text-red-400">
-        {error}
+      <div className="flex h-full flex-col items-center justify-center gap-3 px-6 text-center text-red-400">
+        <div>{error}</div>
+        <button
+          type="button"
+          className="file-viewer-icon-button"
+          onClick={retryLoad}
+          style={{ width: "auto", height: 32, gap: 5, padding: "0 12px", border: "none", fontSize: 12, fontWeight: 500 }}
+        >
+          {t("common.retry")}
+        </button>
       </div>
     );
   }
@@ -1547,7 +1374,7 @@ export function ChatWindow({ session, searchTarget, onSearchTargetHandled, initi
                 message={{
                   role: "bashExecution",
                   command: pendingBash.command,
-                  output: "",
+                  output: pendingBash.output,
                   excludeFromContext: pendingBash.excludeFromContext,
                 } as BashExecutionMessage}
                 sessionId={session?.id ?? sessionIdRef.current ?? undefined}

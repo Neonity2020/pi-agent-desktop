@@ -2,6 +2,7 @@ import { randomUUID } from "node:crypto";
 import type { Agent, AgentMessage, ThinkingLevel } from "@earendil-works/pi-agent-core";
 import {
   getSupportedThinkingLevels,
+  normalizeContext,
   type Api,
   type AssistantMessage,
   type Context,
@@ -299,7 +300,9 @@ export async function generateSessionTitle(source: AgentSession): Promise<Genera
   const timeout = setTimeout(() => controller.abort(), TITLE_TIMEOUT_MS);
 
   try {
-    const stream = await sourceAgent.streamFunction(model, context, requestOptions);
+    // pi >= 0.86 stream functions take a TranscriptContext: fold the system prompt
+    // into a leading system message with the SDK's own normalizer.
+    const stream = await sourceAgent.streamFunction(model, normalizeContext(context), requestOptions);
     return titleFromAssistant(await stream.result());
   } catch (error) {
     if (controller.signal.aborted) {

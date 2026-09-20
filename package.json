@@ -1,6 +1,6 @@
 {
   "name": "@agegr/pi-web",
-  "version": "0.9.1",
+  "version": "0.10.0",
   "description": "Web UI for the pi coding agent",
   "homepage": "https://github.com/agegr/pi-web#readme",
   "repository": {
@@ -48,10 +48,16 @@
     "test:terminal": "node e2e/terminal.mjs"
   },
   "dependencies": {
-    "@earendil-works/pi-agent-core": "0.85.1",
-    "@earendil-works/pi-ai": "0.85.1",
-    "@earendil-works/pi-coding-agent": "0.85.1",
-    "@earendil-works/pi-tui": "0.85.1",
+    "@earendil-works/pi-agent-core": "0.86.1",
+    "@earendil-works/pi-ai": "0.86.1",
+    "@earendil-works/pi-coding-agent": "0.86.1",
+    "@earendil-works/pi-tui": "0.86.1",
+    "@tauri-apps/api": "^2.11.1",
+    "@tauri-apps/plugin-clipboard-manager": "^2.3.2",
+    "@tauri-apps/plugin-dialog": "^2.7.2",
+    "@tauri-apps/plugin-notification": "^2.3.3",
+    "@tauri-apps/plugin-process": "^2.3.1",
+    "@tauri-apps/plugin-updater": "^2.10.1",
     "@xterm/addon-fit": "0.11.0",
     "@xterm/xterm": "6.0.0",
     "ansi_up": "^6.0.6",
@@ -64,16 +70,11 @@
     "remark-frontmatter": "^5.0.0",
     "semver": "7.8.0",
     "undici": "8.10.0",
-    "web-push": "^3.6.7",
-    "@tauri-apps/api": "^2.11.1",
-    "@tauri-apps/plugin-clipboard-manager": "^2.3.2",
-    "@tauri-apps/plugin-dialog": "^2.7.2",
-    "@tauri-apps/plugin-notification": "^2.3.3",
-    "@tauri-apps/plugin-process": "^2.3.1",
-    "@tauri-apps/plugin-updater": "^2.10.1"
+    "web-push": "^3.6.7"
   },
   "devDependencies": {
     "@tailwindcss/postcss": "^4.2.2",
+    "@tauri-apps/cli": "^2.10.0",
     "@types/js-yaml": "^4.0.9",
     "@types/node": "^25",
     "@types/proper-lockfile": "4.1.4",
@@ -98,7 +99,6 @@
     "remark-gfm": "^4.0.1",
     "remark-math": "^6.0.0",
     "tailwindcss": "^4.2.2",
-    "typescript": "^5",
-    "@tauri-apps/cli": "^2.10.0"
+    "typescript": "^5"
   }
 }

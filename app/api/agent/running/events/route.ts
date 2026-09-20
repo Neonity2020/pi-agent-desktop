@@ -1,4 +1,5 @@
 import { getRunningRpcSessionIds, subscribeRunningSessions } from "@/lib/rpc-manager";
+import { getSessionListVersion } from "@/lib/session-reader";
 
 export const dynamic = "force-dynamic";
 
@@ -36,16 +37,18 @@ export async function GET(req: Request) {
       };
 
       // Subscribe BEFORE taking the initial snapshot so no state change can slip
-      // through the gap between snapshot and subscription.
+      // through the gap between snapshot and subscription. Every frame carries
+      // the session-list version: renames/deletes/creates in other windows bump
+      // it, letting connected sidebars refetch without waiting for focus.
       const nextUnsubscribe = subscribeRunningSessions((ids) => {
-        encode({ type: "running", runningSessionIds: ids });
+        encode({ type: "running", runningSessionIds: ids, sessionListVersion: getSessionListVersion() });
       });
       if (closed) nextUnsubscribe();
       else unsubscribe = nextUnsubscribe;
 
       // Initial snapshot so the client renders the correct state immediately.
       // (A duplicate frame here is harmless: the client just sets the same set.)
-      encode({ type: "running", runningSessionIds: getRunningRpcSessionIds() });
+      encode({ type: "running", runningSessionIds: getRunningRpcSessionIds(), sessionListVersion: getSessionListVersion() });
 
       // Heartbeat to keep the connection alive through proxies/timeouts.
       if (!closed) heartbeat = setInterval(() => {

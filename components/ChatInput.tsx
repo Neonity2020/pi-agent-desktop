@@ -73,6 +73,8 @@ interface Props {
   isCompacting?: boolean;
   compactError?: string | null;
   compactResult?: CompactResultInfo | null;
+  /** Compaction/branch-summary generation is in retry backoff (attempt/max). */
+  summarizationRetry?: { attempt: number; maxAttempts: number } | null;
   toolPreset?: ToolPreset;
   onToolPresetChange?: (preset: ToolPreset) => void;
   thinkingLevel?: "auto" | "off" | "minimal" | "low" | "medium" | "high" | "xhigh" | "max";
@@ -82,6 +84,15 @@ interface Props {
   availableThinkingLevels?: string[] | null;
   thinkingLevelMap?: Record<string, string | null> | null;
   retryInfo?: { attempt: number; maxAttempts: number; errorMessage?: string } | null;
+  /** Cancel the auto-retry backoff (pi ≥ 0.86) shown in the retry banner. */
+  onAbortRetry?: () => void;
+  automation?: { autoCompactionEnabled: boolean | null; autoRetryEnabled: boolean | null; steeringMode: string | null; followUpMode: string | null };
+  onSetAutomation?: (change: {
+    autoCompaction?: boolean;
+    autoRetry?: boolean;
+    steeringMode?: "all" | "one-at-a-time";
+    followUpMode?: "all" | "one-at-a-time";
+  }) => void;
   queuedMessages?: QueuedMessages | null;
   inputHistory?: string[];
   onRecallQueue?: () => void;
@@ -657,9 +668,9 @@ export function ModelScopeWarningBanner({
 
 export const ChatInput = forwardRef<ChatInputHandle, Props>(function ChatInput({
   onSend, onAbort, onSteer, onFollowUp, isStreaming, model, isAutoModelSelection, modelNames, modelList, modelError, modelScopeWarnings, onDismissModelScopeWarnings, onOpenModelsConfig, onModelChange, modelSwitching,
-  onCompact, onAbortCompaction, isCompacting, compactError, compactResult, toolPreset, onToolPresetChange,
+  onCompact, onAbortCompaction, isCompacting, compactError, compactResult, summarizationRetry, toolPreset, onToolPresetChange,
   thinkingLevel, isAutoThinkingSelection = false, onThinkingLevelChange, availableThinkingLevels, thinkingLevelMap,
-  retryInfo, queuedMessages, inputHistory = [], onRecallQueue,
+  retryInfo, onAbortRetry, automation, onSetAutomation, queuedMessages, inputHistory = [], onRecallQueue,
   slashCommands, slashCommandsLoading, onLoadSlashCommands,
   onBuiltinCommand,
   soundEnabled, onSoundToggle, onAudioUnlock,
@@ -715,6 +726,7 @@ export const ChatInput = forwardRef<ChatInputHandle, Props>(function ChatInput({
   const [value, setValue] = useState(() => (draftKey ? getDraft(draftKey)?.value ?? "" : ""));
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [modelDropdownOpen, setModelDropdownOpen] = useState(false);
+  const [automationDropdownOpen, setAutomationDropdownOpen] = useState(false);
   const [modelDropdownRect, setModelDropdownRect] = useState<{ top: number; left: number; width: number } | null>(null);
   const [modelFilter, setModelFilter] = useState("");
   const [toolDropdownOpen, setToolDropdownOpen] = useState(false);
@@ -761,6 +773,7 @@ export const ChatInput = forwardRef<ChatInputHandle, Props>(function ChatInput({
   const modelDropdownPanelRef = useRef<HTMLDivElement>(null);
   const toolDropdownRef = useRef<HTMLDivElement>(null);
   const thinkingDropdownRef = useRef<HTMLDivElement>(null);
+  const automationDropdownRef = useRef<HTMLDivElement>(null);
   const controlsMenuRef = useRef<HTMLDivElement>(null);
   const historyMenuRef = useRef<HTMLDivElement>(null);
   const isComposingRef = useRef(false);
@@ -1130,18 +1143,11 @@ export const ChatInput = forwardRef<ChatInputHandle, Props>(function ChatInput({
     const msg = value.trim();
     if (!msg && !attachedImages.length) return;
     onAudioUnlock?.();
-    if (!attachedImages.length && msg.startsWith("/") && onBuiltinCommand) {
-      const result = await onBuiltinCommand(msg);
-      if (result.handled) {
-        if (!result.error) clearInput();
-        return;
-      }
-    }
+    if (await runBuiltinCommand(msg)) return;
     const resolvedMessage = await resolveSessionReferences(msg, sessionMentionTargetsRef.current);
     onSend(resolvedMessage, attachedImages.length ? attachedImages : undefined);
     clearInput();
-    onSend(msg, attachedImages.length ? attachedImages : undefined);
-  }, [value, attachedImages, isStreaming, runBuiltinCommand, onSend, clearInput, onAudioUnlock]);
+  }, [value, attachedImages, runBuiltinCommand, onSend, clearInput, onAudioUnlock]);
 
   const slashQuery = !compact && value.startsWith("/") && !/\s/.test(value.slice(1))
     ? value.slice(1).toLowerCase()
@@ -1877,6 +1883,9 @@ export const ChatInput = forwardRef<ChatInputHandle, Props>(function ChatInput({
       if (thinkingDropdownRef.current && !thinkingDropdownRef.current.contains(e.target as Node)) {
         setThinkingDropdownOpen(false);
       }
+      if (automationDropdownRef.current && !automationDropdownRef.current.contains(e.target as Node)) {
+        setAutomationDropdownOpen(false);
+      }
       if (controlsMenuRef.current && !controlsMenuRef.current.contains(e.target as Node)) {
         setControlsMenuOpen(false);
       }
@@ -2027,6 +2036,15 @@ export const ChatInput = forwardRef<ChatInputHandle, Props>(function ChatInput({
               <path d="M3 3v5h5" />
             </svg>
              {t("chat.retrying", { attempt: retryInfo.attempt, max: retryInfo.maxAttempts })}{retryInfo.errorMessage && <span style={{ opacity: 0.7, marginLeft: 4 }}>— {retryInfo.errorMessage}</span>}
+             {onAbortRetry && (
+               <button
+                 type="button"
+                 onClick={onAbortRetry}
+                 style={{ marginLeft: "auto", flexShrink: 0, background: "none", border: "none", color: "inherit", cursor: "pointer", fontSize: 11, padding: 0, textDecoration: "underline", textUnderlineOffset: 2 }}
+               >
+                 {t("chat.cancelRetry")}
+               </button>
+             )}
           </div>
         )}
         {compactResultText && (
@@ -2832,6 +2850,27 @@ export const ChatInput = forwardRef<ChatInputHandle, Props>(function ChatInput({
             position: "relative",
             marginLeft: isNarrow ? 0 : "auto",
           }}>
+            {/* Narrow screens collapse the controls behind "More controls";
+                Stop must stay one tap away while a run is active. */}
+            {isNarrow && isStreaming && !controlsMenuOpen && (
+              <button
+                type="button"
+                onClick={onAbort}
+                title={t("chat.stopAgent")}
+                aria-label={t("chat.stopAgent")}
+                style={{
+                  display: "flex", alignItems: "center", justifyContent: "center",
+                  width: 32, height: 32, marginRight: 6,
+                  background: "color-mix(in srgb, var(--danger) 8%, transparent)",
+                  border: "1px solid color-mix(in srgb, var(--danger) 30%, transparent)",
+                  borderRadius: 9, color: "var(--danger)", cursor: "pointer",
+                }}
+              >
+                <svg width="10" height="10" viewBox="0 0 10 10" fill="none" aria-hidden="true">
+                  <rect x="1.5" y="1.5" width="7" height="7" rx="1.5" fill="currentColor" />
+                </svg>
+              </button>
+            )}
             {isNarrow && (
               <button
                 type="button"
@@ -3004,7 +3043,7 @@ export const ChatInput = forwardRef<ChatInputHandle, Props>(function ChatInput({
                 })()}
               </div>
             )}
-            {!isStreaming && onToolPresetChange && (
+            {onToolPresetChange && (
               <div ref={toolDropdownRef} style={{ position: "relative" }}>
                 <button
                   className="native-toolbar-button"
@@ -3093,7 +3132,7 @@ export const ChatInput = forwardRef<ChatInputHandle, Props>(function ChatInput({
               </div>
             )}
 
-            {!isStreaming && onCompact && (
+            {onCompact && (!isStreaming || isCompacting) && (
               <div style={{ position: "relative" }}>
                 {compactError && (
                   <div style={{
@@ -3109,7 +3148,6 @@ export const ChatInput = forwardRef<ChatInputHandle, Props>(function ChatInput({
                 <button
                   className="native-toolbar-button"
                   onClick={isCompacting ? onAbortCompaction : onCompact}
-                  disabled={isStreaming && !isCompacting}
                   style={{
                     display: "flex", alignItems: "center", justifyContent: "center", gap: 5,
                     padding: (isCompact && !controlsMenuOpen) ? "0 6px" : "8px 12px",
@@ -3119,12 +3157,11 @@ export const ChatInput = forwardRef<ChatInputHandle, Props>(function ChatInput({
                     border: "none",
                     borderRadius: 9,
                     color: isCompacting ? "var(--danger)" : "var(--text-muted)",
-                    cursor: (isStreaming && !isCompacting) ? "not-allowed" : "pointer",
-                    fontSize: 12, opacity: (isStreaming && !isCompacting) ? 0.5 : 1,
+                    cursor: "pointer",
+                    fontSize: 12, opacity: 1,
                     transition: "background 0.12s, color 0.12s",
                   }}
                   onMouseEnter={(e) => {
-                    if (isStreaming && !isCompacting) return;
                     e.currentTarget.style.background = isCompacting ? "color-mix(in srgb, var(--danger) 16%, transparent)" : "var(--bg-hover)";
                     e.currentTarget.style.color = isCompacting ? "var(--danger)" : "var(--text)";
                   }}
@@ -3136,7 +3173,7 @@ export const ChatInput = forwardRef<ChatInputHandle, Props>(function ChatInput({
                    aria-label={isCompacting ? t("chat.stopCompaction") : t("chat.compactContext")}
                 >
                   {isCompacting ? (
-                    <><svg width="10" height="10" viewBox="0 0 10 10" fill="none"><rect x="2" y="2" width="6" height="6" rx="1" fill="currentColor" /></svg>{(!isCompact || controlsMenuOpen) && <span style={{ whiteSpace: "nowrap" }}>{t("chat.compacting")}</span>}</>
+                    <><svg width="10" height="10" viewBox="0 0 10 10" fill="none"><rect x="2" y="2" width="6" height="6" rx="1" fill="currentColor" /></svg>{(!isCompact || controlsMenuOpen) && <span style={{ whiteSpace: "nowrap" }}>{summarizationRetry ? t("chat.compactingRetry", { attempt: summarizationRetry.attempt, max: summarizationRetry.maxAttempts }) : t("chat.compacting")}</span>}</>
                   ) : (
                     <><svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
                       <polyline points="4 14 10 14 10 20" /><polyline points="20 10 14 10 14 4" />
@@ -3144,6 +3181,112 @@ export const ChatInput = forwardRef<ChatInputHandle, Props>(function ChatInput({
                     </svg>{(!isCompact || controlsMenuOpen) && <span style={{ whiteSpace: "nowrap" }}>{t("chat.compact")}</span>}</>
                   )}
                 </button>
+              </div>
+            )}
+
+            {onSetAutomation && automation && (automation.autoCompactionEnabled !== null || automation.autoRetryEnabled !== null || automation.steeringMode !== null) && (
+              <div ref={automationDropdownRef} style={{ position: "relative" }}>
+                <button
+                  className="native-toolbar-button"
+                  onClick={() => setAutomationDropdownOpen((v) => !v)}
+                  title={t("chat.sessionAutomation")}
+                  aria-label={t("chat.sessionAutomation")}
+                  aria-expanded={automationDropdownOpen}
+                  style={{
+                    display: "flex", alignItems: "center", justifyContent: "center",
+                    width: (isCompact && !controlsMenuOpen) ? 32 : undefined,
+                    height: 32,
+                    padding: (isCompact && !controlsMenuOpen) ? 0 : "8px 12px",
+                    background: automationDropdownOpen ? "var(--bg-hover)" : "none",
+                    border: "none", borderRadius: 9,
+                    color: "var(--text-muted)", cursor: "pointer", fontSize: 12,
+                    transition: "background 0.12s, color 0.12s",
+                  }}
+                  onMouseEnter={(e) => { e.currentTarget.style.background = "var(--bg-hover)"; e.currentTarget.style.color = "var(--text)"; }}
+                  onMouseLeave={(e) => { e.currentTarget.style.background = automationDropdownOpen ? "var(--bg-hover)" : "none"; e.currentTarget.style.color = "var(--text-muted)"; }}
+                >
+                  <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                    <circle cx="12" cy="12" r="3" />
+                    <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 1 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 1 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 1 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 1 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z" />
+                  </svg>
+                </button>
+                {automationDropdownOpen && (
+                  <div className="native-popover" style={{
+                    position: "absolute",
+                    bottom: "calc(100% + 6px)",
+                    ...(isMobile ? { left: 0 } : { right: 0 }),
+                    zIndex: 100, background: "var(--bg)", border: "1px solid var(--border)",
+                    borderRadius: 8, boxShadow: "0 -4px 16px rgba(0,0,0,0.10)",
+                    padding: "6px 0", minWidth: 230,
+                  }}>
+                    {automation.autoCompactionEnabled !== null && (
+                      <label style={{ display: "flex", alignItems: "center", gap: 8, padding: "6px 12px", fontSize: 12, cursor: "pointer" }}>
+                        <input
+                          type="checkbox"
+                          checked={automation.autoCompactionEnabled}
+                          onChange={(e) => onSetAutomation({ autoCompaction: e.target.checked })}
+                        />
+                        {t("chat.autoCompaction")}
+                      </label>
+                    )}
+                    {automation.autoRetryEnabled !== null && (
+                      <label style={{ display: "flex", alignItems: "center", gap: 8, padding: "6px 12px", fontSize: 12, cursor: "pointer" }}>
+                        <input
+                          type="checkbox"
+                          checked={automation.autoRetryEnabled}
+                          onChange={(e) => onSetAutomation({ autoRetry: e.target.checked })}
+                        />
+                        {t("chat.autoRetry")}
+                      </label>
+                    )}
+                    {automation.steeringMode !== null && (
+                      <div style={{ padding: "6px 12px", borderTop: "1px solid var(--border)", marginTop: 4, paddingTop: 10 }}>
+                        <div style={{ fontSize: 11, color: "var(--text-dim)", marginBottom: 4 }}>{t("chat.steeringMode")}</div>
+                        <div style={{ display: "flex", gap: 4 }}>
+                          {(["all", "one-at-a-time"] as const).map((mode) => (
+                            <button
+                              key={mode}
+                              type="button"
+                              onClick={() => onSetAutomation({ steeringMode: mode })}
+                              style={{
+                                flex: 1, height: 26, fontSize: 11,
+                                border: "1px solid var(--border)", borderRadius: 6,
+                                background: automation.steeringMode === mode ? "var(--accent)" : "var(--bg)",
+                                color: automation.steeringMode === mode ? "#fff" : "var(--text-muted)",
+                                cursor: "pointer",
+                              }}
+                            >
+                              {t(`chat.queueMode.${mode}`)}
+                            </button>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+                    {automation.followUpMode !== null && (
+                      <div style={{ padding: "6px 12px 4px", marginBottom: 2 }}>
+                        <div style={{ fontSize: 11, color: "var(--text-dim)", marginBottom: 4 }}>{t("chat.followUpMode")}</div>
+                        <div style={{ display: "flex", gap: 4 }}>
+                          {(["all", "one-at-a-time"] as const).map((mode) => (
+                            <button
+                              key={mode}
+                              type="button"
+                              onClick={() => onSetAutomation({ followUpMode: mode })}
+                              style={{
+                                flex: 1, height: 26, fontSize: 11,
+                                border: "1px solid var(--border)", borderRadius: 6,
+                                background: automation.followUpMode === mode ? "var(--accent)" : "var(--bg)",
+                                color: automation.followUpMode === mode ? "#fff" : "var(--text-muted)",
+                                cursor: "pointer",
+                              }}
+                            >
+                              {t(`chat.queueMode.${mode}`)}
+                            </button>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                )}
               </div>
             )}
 
