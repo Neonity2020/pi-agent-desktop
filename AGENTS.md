@@ -286,6 +286,9 @@ Upstream segment D (0e36743) restructured `AppShell.tsx`'s main region in ways t
 
 The topbar renders exactly ONE toolbar group (`app-topbar-actions`: history/branches/more + `renderSessionStatsButton`). Segment D also left a second desktop group (`renderChatToolbarActions(false)` — history/generate-title/system/tools) next to it; the duplicate is removed, its unique entries (Sub-agents, Tools) live in the More menu via `handleSystemInfoToggle` (keeping the lazy dormant-session start), and its generate-title guards (persisted-stats counting + `selectedSession.transient` check) were merged into the group-A button — pinned by `AppShell.auto-name.test.mjs`. JSX indentation in AppShell.tsx is unreliable; verify structure with the TS AST or the DOM, not by counting whitespace. `fileContentBlock()` in `AppShell.file-viewer-state.test.mjs` slices source by the panel's closing-div sequence — keep in sync.
 
+### Segment E merge (1eb5e66) — what was adopted and what was declined
+Merged upstream 974c8bb..1eb5e66 on top of v0.10.0. Adopted: scroll-to-latest button (with upstream's empty-session branding header, rebranded to PRODUCT_NAME and stripped of the NEXT_PUBLIC version badge per fork branding policy), streaming first-chunk dedup, PDF `#page=` fragments (MarkdownBody's link context + widened onOpenFile signatures), selection-toolbar z-index, subagent/provider fixes. Declined: upstream's sidebar explorer + resizable session/explorer panes (ed50d88) — this fork keeps the project-tree sidebar and the FileExplorer in the right panel; `SessionSidebar.test.mjs` pins that decision, so a future merge that re-adds `data-resize-handle="sidebar-sections"` should be treated as the merge re-introducing declined UI, not as a test to satisfy. Upstream's `/auto-compact` command is superseded by the composer automation gear.
+
 ## Pi Session File Format
 
 Location: `~/.pi/agent/sessions/<encoded-cwd>/<timestamp>_<uuid>.jsonl`
