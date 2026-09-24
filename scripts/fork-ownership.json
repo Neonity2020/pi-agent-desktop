@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "upstreamBaseline": "main@974c8bb (post v0.9.1)",
+  "upstreamBaseline": "main@96966e5 (post v0.9.3)",
   "note": "Single source of truth for the pi-web merge boundary. `driftedUpstreamFiles` lists files agegr/pi-web owns that this fork has also edited — every one is a potential merge conflict, and a potential SILENT semantic conflict when git merges cleanly but the two sides changed different things. The automated sync (.github/workflows/component-updates.yml) intersects each incoming upstream release with this map to decide whether it may push to main unattended. Human-facing rationale lives in docs/ownership-boundaries.md.",
   "ignored": [
     "package-lock.json",
@@ -25,30 +25,30 @@
   "driftedUpstreamFiles": {
     "components/SessionSidebar.tsx": {
       "risk": "high",
-      "drift": 2399,
+      "drift": 2585,
       "reason": "~500 lines were MOVED OUT into components/ProjectPicker.tsx and components/path-ui.tsx, which do not exist upstream. git merge does not track cross-file moves: an upstream edit to the project-picker block can merge back cleanly and silently resurrect a second copy.",
-      "structuralDrift": 1946,
+      "structuralDrift": 2096,
       "disposition": "accepted"
     },
     "components/AppShell.tsx": {
       "risk": "high",
-      "drift": 1059,
+      "drift": 1797,
       "reason": "Top-bar redesign (toolbar consolidated into a more-menu, inline styles to classNames) plus the mount point for desktop chrome. The desktop-only parts moved to components/desktop/; the remaining 376 structural lines are the fork's own interaction design, not desktop plumbing, so this file stays high risk by design rather than by neglect.",
-      "structuralDrift": 868,
+      "structuralDrift": 1425,
       "disposition": "accepted"
     },
     "components/FileViewer.tsx": {
       "risk": "high",
-      "drift": 484,
+      "drift": 470,
       "reason": "Adds FileViewerToolbar and FileViewerStatus, file icons, a live-sync indicator and a retry action. Both components are defined inside FileViewer.tsx rather than moved out, so there is no cross-file resurrection risk — only a large diff. Kept deliberately.",
-      "structuralDrift": 374,
+      "structuralDrift": 360,
       "disposition": "accepted"
     },
     "components/FileExplorer.tsx": {
       "risk": "low",
-      "drift": 8,
+      "drift": 16,
       "reason": "Took upstream FileExplorer wholesale in the v0.8.11 merge (its file-search implementation won); only the selectedFilePath prop remains fork-side. Kept deliberately.",
-      "structuralDrift": 8,
+      "structuralDrift": 16,
       "disposition": "accepted"
     },
     "components/TabBar.tsx": {
@@ -60,36 +60,36 @@
     },
     "components/ChatWindow.tsx": {
       "risk": "high",
-      "drift": 537,
+      "drift": 515,
       "reason": "Branding copy and a redesigned empty state. Part of the fork's interaction design. Kept deliberately.",
-      "structuralDrift": 483,
+      "structuralDrift": 436,
       "disposition": "accepted"
     },
     "hooks/useTheme.ts": {
       "risk": "medium",
-      "drift": 57,
+      "drift": 31,
       "reason": "Follows the OS colour scheme until the user picks a theme explicitly, and drops the ToggleOrigin argument so the view transition always starts from the centre. The view transition itself is unchanged from upstream. Kept deliberately.",
-      "structuralDrift": 57,
+      "structuralDrift": 31,
       "disposition": "accepted"
     },
     "components/ChatInput.tsx": {
       "risk": "high",
-      "drift": 707,
+      "drift": 868,
       "reason": "Composer chrome restyle. Upstream changed this file in v0.8.1, and components/ChatInput.test.mjs covers it.",
-      "structuralDrift": 542,
+      "structuralDrift": 653,
       "disposition": "accepted"
     },
     "components/MessageView.tsx": {
       "risk": "medium",
-      "drift": 290,
+      "drift": 337,
       "reason": "Message bubble markup adjusted.",
-      "structuralDrift": 168,
+      "structuralDrift": 205,
       "disposition": "accepted"
     },
     "lib/i18n/registry.ts": {
       "risk": "low",
-      "drift": 4,
-      "structuralDrift": 4,
+      "drift": 6,
+      "structuralDrift": 6,
       "disposition": "accepted",
       "reason": "Relative imports of ./messages/en and ./messages/zh-CN carry explicit .ts extensions so lib/i18n/registry.test.mjs can load the file through Node's native type stripping (same constraint that put allowImportingTsExtensions in tsconfig.json). Two import lines; conflicts here would be textual."
     },
@@ -101,9 +101,9 @@
     },
     "app/layout.tsx": {
       "risk": "low",
-      "drift": 10,
+      "drift": 18,
       "reason": "native-theme.css import, branding title, dark-mode bootstrap script.",
-      "structuralDrift": 10,
+      "structuralDrift": 18,
       "disposition": "accepted"
     },
     "eslint.config.mjs": {
@@ -114,9 +114,9 @@
     },
     "lib/rpc-manager.ts": {
       "risk": "medium",
-      "drift": 41,
+      "drift": 109,
       "reason": "Small fork edit in a file upstream changes often; watch it despite the low drift count.",
-      "structuralDrift": 41,
+      "structuralDrift": 109,
       "disposition": "accepted"
     },
     "components/FileIcons.tsx": {
@@ -128,9 +128,9 @@
     },
     "components/BranchNavigator.tsx": {
       "risk": "low",
-      "drift": 1,
+      "drift": 25,
       "reason": "className hook only, no structural change — the intended shape for every restyled file.",
-      "structuralDrift": 0,
+      "structuralDrift": 13,
       "disposition": "accepted"
     },
     "package.json": {
@@ -165,22 +165,22 @@
     },
     "lib/file-access.ts": {
       "risk": "low",
-      "drift": 7,
-      "structuralDrift": 7,
+      "drift": 13,
+      "structuralDrift": 13,
       "disposition": "accepted",
       "reason": "Routes homedir() through userHome() so Next's file tracer stops folding it into a build-time glob of the whole user profile — the walk that made every Windows build fail. One import plus call swaps; conflicts here would be textual."
     },
     "app/api/default-cwd/route.ts": {
       "risk": "low",
-      "drift": 7,
-      "structuralDrift": 7,
+      "drift": 6,
+      "structuralDrift": 6,
       "disposition": "accepted",
       "reason": "Routes homedir() through userHome() so Next's file tracer stops folding it into a build-time glob of the whole user profile — the walk that made every Windows build fail. One import plus call swaps; conflicts here would be textual."
     },
     "lib/directory-browser.ts": {
       "risk": "low",
-      "drift": 8,
-      "structuralDrift": 8,
+      "drift": 25,
+      "structuralDrift": 25,
       "disposition": "accepted",
       "reason": "Routes homedir() through userHome() so Next's file tracer stops folding it into a build-time glob of the whole user profile — the walk that made every Windows build fail. One import plus call swaps; conflicts here would be textual."
     },
@@ -193,8 +193,8 @@
     },
     "app/api/cwd/validate/route.ts": {
       "risk": "low",
-      "drift": 6,
-      "structuralDrift": 6,
+      "drift": 28,
+      "structuralDrift": 28,
       "disposition": "accepted",
       "reason": "Routes homedir() through userHome() so Next's file tracer stops folding it into a build-time glob of the whole user profile — the walk that made every Windows build fail. One import plus call swaps; conflicts here would be textual."
     }
@@ -234,6 +234,7 @@
     "2026-07-28 — merged pi-web v0.8.2 (i18n, explorer quick changes viewer, project trust / restricted mode, Shift+Delete). Fork markup kept, upstream i18n strings adopted inside it. The upstream CWD picker and PiWebTitle scramble blocks that merged back into SessionSidebar.tsx were dropped again; the collapsible-explorer chevron stayed out (fork's explorer is always open) while the changes-viewer toggle was kept. Numbers refreshed against the v0.8.2 baseline.",
     "2026-07-28 — lib/i18n/registry.ts (new upstream file in v0.8.2): added .ts extensions to its two relative imports so its test loads under Node type stripping; accepted as new low drift.",
     "2026-07-31 — READMEs reduced to English (README.md, the default) plus Simplified Chinese (README.zh-CN.md), matching the two locales the UI actually ships in lib/i18n. README.ja.md and README.ru.md were still upstream pi-web docs describing an npx web server, so they were deleted rather than kept as stale descriptions of a product this fork no longer is. A sync that restores them should delete them again.",
-    "2026-09-19 — merged upstream v0.8.11 → v0.9.1 → main@974c8bb in four staged merges (88285a4, 7dbd35f, b11eabe, 0e36743). Config modals (Models/Skills/Plugins) now track upstream exactly and left the manifest. Numbers refreshed against main@974c8bb."
+    "2026-09-19 — merged upstream v0.8.11 → v0.9.1 → main@974c8bb in four staged merges (88285a4, 7dbd35f, b11eabe, 0e36743). Config modals (Models/Skills/Plugins) now track upstream exactly and left the manifest. Numbers refreshed against main@974c8bb.",
+    "2026-09-25 — merged upstream 1eb5e66..96966e5 (v0.9.2+v0.9.3, pi 0.87.1) in one merge (15bee2b). Upstream owns the exact-system-prompt mechanism (lib/exact-system-prompt.ts) and the session scanner; fork transformContext projection deleted. Declined again: resizable sidebar panes, DirectoryPicker, SessionSearch, sidebar FileExplorer, ChatMinimap. Numbers refreshed against the 96966e5 baseline."
   ]
 }
