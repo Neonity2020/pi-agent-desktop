@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useCallback, useRef, useEffect, useLayoutEffect, useMemo } from "react";
+import { createPortal } from "react-dom";
 import { useRouter, useSearchParams } from "next/navigation";
 import dynamic from "next/dynamic";
 import { useGlobalKeyboardShortcuts } from "@/hooks/useKeyboardShortcuts";
@@ -26,7 +27,7 @@ import { UpdateReminder } from "./UpdateReminder";
 import { useTheme } from "@/hooks/useTheme";
 import { useI18n } from "@/hooks/useI18n";
 import { useIsMobile, useIsNarrowMobile } from "@/hooks/useIsMobile";
-import { APP_PREF_KEYS, getPrefBool, getPrefJson, setPrefJson } from "@/lib/app-prefs";
+import { APP_PREF_KEYS, getPrefBool, getPrefJson, setPref, setPrefJson } from "@/lib/app-prefs";
 import { useViewportHeight } from "@/hooks/useViewportHeight";
 import { useResizablePanel } from "@/hooks/useResizablePanel";
 import { useDesktopConnection } from "@/lib/desktop-connection";
@@ -41,7 +42,7 @@ import {
 } from "@/lib/workspace-state";
 import { WindowControls, useDesktopChrome, useWindowDrag } from "./desktop";
 import { openFileTab, saveFileViewerState } from "./file-tab-state";
-import { SettingsPanel, SettingsSectionIcon } from "./SettingsPanel";
+import { SETTINGS_SECTION_ITEMS, SettingsPanel, SettingsSectionIcon } from "./SettingsPanel";
 import { SystemPromptPanel } from "./SystemPromptPanel";
 import { ToolDefinitionsPanel } from "./ToolDefinitionsPanel";
 import { AgentSessionPanel } from "./AgentSessionPanel";
@@ -85,7 +86,7 @@ import type { SessionStatsInfo } from "@/lib/pi-types";
 import type { FileViewerState } from "@/lib/file-viewer-state";
 import type { ToolEntry } from "@/lib/tool-presets";
 import { getSessionFamily } from "@/lib/session-family";
-import { getLastSettingsSection, type SettingsSection } from "@/lib/settings-navigation";
+import { type SettingsSection } from "@/lib/settings-navigation";
 
 type SessionCopyField = "file" | "id" | "projectDir" | "gitBranch" | "gitWorktree";
 type AutoNameStatus =
@@ -134,21 +135,14 @@ export function AppShell() {
   // also fire for tasks finishing in a non-active workspace whose ChatWindow
   // is not mounted. ChatWindow receives the audio callbacks as props.
   const { soundEnabled, onSoundToggle, playDoneSound, unlockAudio, soundEnabledRef } = useAudio();
-  const [quoteSelectionEnabled, setQuoteSelectionEnabled] = useState(false);
+  const [quoteSelectionEnabled, setQuoteSelectionEnabled] = useState(true);
   useEffect(() => {
-    try {
-      setQuoteSelectionEnabled(localStorage.getItem("pi-quote-selection-enabled") === "true");
-    } catch {
-      // Browser storage is best-effort.
-    }
+    // Opt-out pref: absent storage means enabled (default on).
+    setQuoteSelectionEnabled(getPrefBool(APP_PREF_KEYS.quoteSelectionEnabled, true));
   }, []);
   const handleQuoteSelectionChange = useCallback((enabled: boolean) => {
     setQuoteSelectionEnabled(enabled);
-    try {
-      localStorage.setItem("pi-quote-selection-enabled", String(enabled));
-    } catch {
-      // Keep the current page usable when storage is unavailable.
-    }
+    setPref(APP_PREF_KEYS.quoteSelectionEnabled, String(enabled));
   }, []);
   const notifiedAttentionRequestIdsRef = useRef(new Set<string>());
   const handleBackgroundTaskDone = useCallback(() => {
@@ -211,6 +205,49 @@ export function AppShell() {
     setExplorerRefreshKey((key) => key + 1);
   }, []);
   const [settingsSection, setSettingsSection] = useState<SettingsSection | null>(null);
+  const [settingsMenuOpen, setSettingsMenuOpen] = useState(false);
+  const [settingsMenuPos, setSettingsMenuPos] = useState<{ top: number; left: number } | null>(null);
+  const settingsMenuRef = useRef<HTMLDivElement>(null);
+  const settingsMenuButtonRef = useRef<HTMLButtonElement>(null);
+  const closeSettingsMenu = useCallback(() => {
+    setSettingsMenuOpen(false);
+    setSettingsMenuPos(null);
+  }, []);
+  const toggleSettingsMenu = useCallback((event: React.MouseEvent<HTMLButtonElement>) => {
+    if (settingsMenuOpen) {
+      closeSettingsMenu();
+      return;
+    }
+    const rect = event.currentTarget.getBoundingClientRect();
+    const menuWidth = 184;
+    const menuHeight = 236;
+    const left = Math.max(8, Math.min(rect.left, window.innerWidth - menuWidth - 8));
+    const below = rect.bottom + 6;
+    const top = below + menuHeight > window.innerHeight - 8
+      ? Math.max(8, rect.top - menuHeight - 6)
+      : below;
+    setSettingsMenuPos({ top, left });
+    setSettingsMenuOpen(true);
+  }, [settingsMenuOpen, closeSettingsMenu]);
+  useEffect(() => {
+    if (!settingsMenuOpen) return;
+    const handleMouseDown = (event: MouseEvent) => {
+      const target = event.target as Node;
+      if (settingsMenuRef.current?.contains(target)) return;
+      // Clicks on the toggle button fall through to its onClick, which closes.
+      if (settingsMenuButtonRef.current?.contains(target)) return;
+      closeSettingsMenu();
+    };
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "Escape" && !event.defaultPrevented) closeSettingsMenu();
+    };
+    document.addEventListener("mousedown", handleMouseDown);
+    document.addEventListener("keydown", handleKeyDown);
+    return () => {
+      document.removeEventListener("mousedown", handleMouseDown);
+      document.removeEventListener("keydown", handleKeyDown);
+    };
+  }, [settingsMenuOpen, closeSettingsMenu]);
   const [modelsRefreshKey, setModelsRefreshKey] = useState(0);
   const [topMoreOpen, setTopMoreOpen] = useState(false);
   const topMoreRef = useRef<HTMLDivElement>(null);
@@ -1465,6 +1502,20 @@ export function AppShell() {
         )}
       </button>
       <button
+        ref={settingsMenuButtonRef}
+        className="sidebar-chrome-button"
+        onClick={toggleSettingsMenu}
+        title={translate("common.settings")}
+        aria-label={translate("common.settings")}
+        aria-haspopup="menu"
+        aria-expanded={settingsMenuOpen}
+      >
+        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+          <circle cx="12" cy="12" r="3" />
+          <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z" />
+        </svg>
+      </button>
+      <button
         className="sidebar-chrome-button"
         onClick={handleSidebarToggle}
         title={translate("sidebar.hide")}
@@ -1502,51 +1553,6 @@ export function AppShell() {
         onRunningSessionIdsChange={handleRunningSessionIdsChange}
         onSessionsChange={handleSessionsChange}
       />
-      <div className="sidebar-footer" style={{ padding: "8px", flexShrink: 0, display: "flex", justifyContent: "space-between", gap: 4 }}>
-        {([
-          ["models", translate("common.models")],
-          ["skills", translate("common.skills")],
-        ] as const).map(([section, label]) => {
-          const disabled = section !== "models" && !projectTrustCwd;
-          return (
-            <button
-              key={section}
-              type="button"
-              onClick={() => setSettingsSection(section)}
-              disabled={disabled}
-              title={disabled ? translate("settings.projectRequired") : label}
-              aria-label={label}
-              style={{
-                flex: 1, display: "flex", alignItems: "center", justifyContent: "center", gap: 6,
-                height: 32, padding: 0, background: "none", border: "none",
-                borderRadius: 9, color: "var(--text-muted)", cursor: disabled ? "default" : "pointer",
-                fontSize: 12, opacity: disabled ? 0.35 : 1,
-                transition: "background 0.12s, color 0.12s",
-              }}
-              onMouseEnter={(event) => { if (!disabled) { event.currentTarget.style.background = "var(--bg-hover)"; event.currentTarget.style.color = "var(--text)"; } }}
-              onMouseLeave={(event) => { event.currentTarget.style.background = "none"; event.currentTarget.style.color = "var(--text-muted)"; }}
-            >
-              <SettingsSectionIcon section={section} size={14} strokeWidth={2} />
-              <span>{label}</span>
-            </button>
-          );
-        })}
-        <button
-          type="button"
-          onClick={() => setSettingsSection(getLastSettingsSection(projectTrustCwd))}
-          title={translate("common.settings")}
-          aria-label={translate("common.settings")}
-          style={{
-            flex: "0 0 32px", display: "flex", alignItems: "center", justifyContent: "center",
-            height: 32, padding: 0, background: "none", border: "none",
-            borderRadius: 9, color: "var(--text-muted)", cursor: "pointer",
-          }}
-          onMouseEnter={(event) => { event.currentTarget.style.background = "var(--bg-hover)"; event.currentTarget.style.color = "var(--text)"; }}
-          onMouseLeave={(event) => { event.currentTarget.style.background = "none"; event.currentTarget.style.color = "var(--text-muted)"; }}
-        >
-          <SettingsSectionIcon section="general" size={14} strokeWidth={2} />
-        </button>
-      </div>
     </>
   );
 
@@ -1605,174 +1611,12 @@ export function AppShell() {
   };
 
 
-  const renderSessionStatsButton = (mobile: boolean) => {
-    if (!mobile && (!showChat || (!sessionStats && !contextUsage))) return null;
-
-    const tokens = sessionStats?.tokens;
-    const cost = sessionStats?.cost ?? 0;
-    const formatCompact = (value: number) => value >= 1_000_000
-      ? `${(value / 1_000_000).toFixed(1)}M`
-      : value >= 1000
-        ? `${(value / 1000).toFixed(0)}k`
-        : String(value);
-    const costText = cost > 0 ? (cost >= 0.01 ? `$${cost.toFixed(2)}` : `<$0.01`) : null;
-
-    let contextColor = "var(--text-muted)";
-    let desktopContextText: string | null = null;
-    let mobileContextText: string | null = null;
-    if (contextUsage?.contextWindow) {
-      const percent = contextUsage.percent;
-      if (percent !== null && percent > 90) contextColor = "#ef4444";
-      else if (percent !== null && percent > 70) contextColor = "rgba(234,179,8,0.95)";
-      desktopContextText = percent !== null
-        ? `${percent.toFixed(0)}% / ${formatCompact(contextUsage.contextWindow)}`
-        : `? / ${formatCompact(contextUsage.contextWindow)}`;
-      mobileContextText = percent !== null ? `${percent.toFixed(0)}%` : null;
-    }
-
-    const tooltipParts: string[] = [];
-    if (tokens) {
-      tooltipParts.push(`in: ${tokens.input.toLocaleString(locale)}`);
-      tooltipParts.push(`out: ${tokens.output.toLocaleString(locale)}`);
-      tooltipParts.push(`cache read: ${tokens.cacheRead.toLocaleString(locale)}`);
-      tooltipParts.push(`cache write: ${tokens.cacheWrite.toLocaleString(locale)}`);
-      if (cost > 0) tooltipParts.push(`cost: $${cost.toFixed(4)}`);
-    }
-    if (contextUsage?.contextWindow) {
-      const percent = contextUsage.percent;
-      tooltipParts.push(`context: ${percent !== null ? percent.toFixed(1) + "%" : "unknown"} of ${contextUsage.contextWindow.toLocaleString()} tokens`);
-    }
-    const tooltip = tooltipParts.join("  |  ");
-    const covered = mobile && isNarrowMobile && mobileToolbarMoreOpen;
-    const hasMobileValues = Boolean(
-      (tokens && (tokens.input > 0 || tokens.output > 0))
-      || costText
-      || mobileContextText,
-    );
-
-    return (
-      <button
-        type="button"
-        onClick={() => toggleTopPanel("session")}
-        disabled={!showChat || covered}
-        tabIndex={covered ? -1 : undefined}
-        title={tooltip || translate("session.title")}
-        aria-label={translate("session.title")}
-        aria-pressed={activeTopPanel === "session"}
-        aria-hidden={covered ? true : undefined}
-        className={mobile ? "mobile-session-stats" : undefined}
-        data-mobile-toolbar-stats={mobile ? "true" : undefined}
-        style={{
-          marginLeft: mobile ? 0 : "auto",
-          display: "flex", alignItems: "center", justifyContent: "flex-end",
-          flex: mobile ? 1 : undefined,
-          minWidth: 0,
-          gap: mobile ? 7 : 10,
-          paddingLeft: mobile ? 6 : 12,
-          paddingRight: mobile ? 6 : 12,
-          height: "100%",
-          overflow: "hidden",
-          visibility: covered ? "hidden" : "visible",
-          pointerEvents: covered ? "none" : "auto",
-          background: activeTopPanel === "session" ? "var(--bg-selected)" : "none",
-          border: "none",
-          borderTop: activeTopPanel === "session" ? "2px solid var(--accent)" : "2px solid transparent",
-          fontSize: 11, color: "var(--text-muted)",
-          whiteSpace: "nowrap", cursor: showChat ? "pointer" : "default",
-          fontVariantNumeric: "tabular-nums",
-          transition: "color 0.1s, background 0.1s",
-        }}
-        onMouseEnter={(event) => {
-          if (showChat && !covered) event.currentTarget.style.color = "var(--text)";
-        }}
-        onMouseLeave={(event) => {
-          event.currentTarget.style.color = activeTopPanel === "session" ? "var(--text)" : "var(--text-muted)";
-        }}
-      >
-        {mobile ? (
-          <>
-            {tokens && tokens.input > 0 && (
-              <span className="mobile-session-stat-io" style={{ display: "flex", alignItems: "center", gap: 2, flexShrink: 0 }}>
-                <svg width="10" height="10" viewBox="0 0 10 10" fill="none" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
-                  <line x1="5" y1="8.5" x2="5" y2="1.5" /><polyline points="2 4 5 1.5 8 4" />
-                </svg>
-                {formatCompact(tokens.input)}
-              </span>
-            )}
-            {tokens && tokens.output > 0 && (
-              <span className="mobile-session-stat-io" style={{ display: "flex", alignItems: "center", gap: 2, flexShrink: 0 }}>
-                <svg width="10" height="10" viewBox="0 0 10 10" fill="none" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
-                  <line x1="5" y1="1.5" x2="5" y2="8.5" /><polyline points="2 6 5 8.5 8 6" />
-                </svg>
-                {formatCompact(tokens.output)}
-              </span>
-            )}
-            {costText && (
-              <span className="mobile-session-stat-cost" style={{ color: "var(--text)", fontWeight: 500, flexShrink: 0 }}>
-                {costText}
-              </span>
-            )}
-            {mobileContextText && (
-              <span style={{ color: contextColor, flexShrink: 0 }}>
-                {mobileContextText}
-              </span>
-            )}
-            {!hasMobileValues && showChat && (
-              <span style={{ overflow: "hidden", textOverflow: "ellipsis", color: "var(--text-dim)" }}>
-                {translate("session.title")}
-              </span>
-            )}
-          </>
-        ) : (
-          <>
-            {tokens && tokens.input > 0 && (
-              <span style={{ display: "flex", alignItems: "center", gap: 4 }}>
-                <svg width="12" height="12" viewBox="0 0 10 10" fill="none" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
-                  <line x1="5" y1="8.5" x2="5" y2="1.5" /><polyline points="2 4 5 1.5 8 4" />
-                </svg>
-                {formatCompact(tokens.input)}
-              </span>
-            )}
-            {tokens && tokens.output > 0 && (
-              <span style={{ display: "flex", alignItems: "center", gap: 4 }}>
-                <svg width="12" height="12" viewBox="0 0 10 10" fill="none" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
-                  <line x1="5" y1="1.5" x2="5" y2="8.5" /><polyline points="2 6 5 8.5 8 6" />
-                </svg>
-                {formatCompact(tokens.output)}
-              </span>
-            )}
-            {tokens && tokens.cacheRead > 0 && (
-              <span style={{ display: "flex", alignItems: "center", gap: 4 }}>
-                <svg width="12" height="12" viewBox="0 0 10 10" fill="none" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
-                  <path d="M8.5 5a3.5 3.5 0 1 1-1-2.45" /><polyline points="6.5 1.5 8.5 2.5 7.5 4.5" />
-                </svg>
-                {formatCompact(tokens.cacheRead)}
-              </span>
-            )}
-            {costText && (
-              <span style={{ display: "flex", alignItems: "center", color: "var(--text)", fontWeight: 500 }}>
-                {costText}
-              </span>
-            )}
-            {desktopContextText && (
-              <span style={{ display: "flex", alignItems: "center", gap: 4, color: contextColor }}>
-                <svg width="12" height="12" viewBox="0 0 10 10" fill="none" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
-                  <path d="M1 9 L1 5 Q1 1 5 1 Q9 1 9 5 L9 9" /><line x1="1" y1="9" x2="9" y2="9" />
-                </svg>
-                {desktopContextText}
-              </span>
-            )}
-          </>
-        )}
-      </button>
-    );
-  };
-
   const renderMainFileToggle = (mobile: boolean) => {
     const covered = mobile && isNarrowMobile && mobileToolbarMoreOpen;
     return (
       <button
         type="button"
+        className="main-file-toggle"
         onClick={handleRightPanelToggle}
         disabled={covered}
         tabIndex={covered ? -1 : undefined}
@@ -1783,18 +1627,12 @@ export function AppShell() {
         aria-label={rightPanelOpen ? translate("files.hidePanel") : translate("files.showPanel")}
         data-mobile-toolbar-file={mobile ? "true" : undefined}
         style={{
-          marginLeft: !mobile && !sessionStats && !contextUsage ? "auto" : 0,
           display: "flex", alignItems: "center", justifyContent: "center",
           width: TOP_BAR_ICON_BUTTON_SIZE, height: TOP_BAR_ICON_BUTTON_SIZE, padding: 0,
           visibility: covered ? "hidden" : "visible",
           pointerEvents: covered ? "none" : "auto",
-          background: rightPanelOpen ? "var(--bg-selected)" : "none",
-          border: "none", borderLeft: "1px solid var(--border)",
-          color: rightPanelOpen ? "var(--text)" : "var(--text-muted)",
-          cursor: "pointer", flexShrink: 0, transition: "color 0.12s, background 0.12s",
+          cursor: "pointer", flexShrink: 0,
         }}
-        onMouseEnter={(event) => { if (!covered) event.currentTarget.style.color = "var(--text)"; }}
-        onMouseLeave={(event) => { event.currentTarget.style.color = rightPanelOpen ? "var(--text)" : "var(--text-muted)"; }}
       >
         <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
           <rect x="3" y="3" width="18" height="18" rx="2" /><line x1="15" y1="3" x2="15" y2="21" />
@@ -1906,13 +1744,63 @@ export function AppShell() {
           </button>
         </div>
       )}
+      <div style={{ display: "flex", flex: 1, minHeight: 0, overflow: "hidden" }}>
+      {/* Mobile overlay backdrop */}
+      <div
+        className={`sidebar-overlay-backdrop${mobileSidebarReady ? "" : " sidebar-mobile-pending"}`}
+        onClick={() => setSidebarOpen(false)}
+        style={{
+          position: "fixed",
+          inset: 0,
+          zIndex: 199,
+          background: "rgba(0,0,0,0.4)",
+          opacity: sidebarOpen ? 1 : 0,
+          pointerEvents: sidebarOpen ? "auto" : "none",
+          transition: "opacity 0.25s ease",
+        }}
+      />
+
+      {/* Left sidebar */}
+      <div
+        ref={sidebarResizer.panelRef}
+        id="session-sidebar"
+        className={`app-sidebar sidebar-container${sidebarOpen ? " sidebar-open" : " sidebar-closed"}${mobileSidebarReady ? "" : " sidebar-mobile-pending"}${sidebarResizer.isResizing ? " sidebar-resizing" : ""}`}
+        inert={rightPanelFullWidth}
+        style={{
+          "--sidebar-width": `${sidebarResizer.width}px`,
+          background: "var(--bg-panel)",
+          borderRight: "1px solid var(--border)",
+          display: "flex",
+          flexDirection: "column",
+          flexShrink: 0,
+          paddingTop: "env(safe-area-inset-top)",
+          paddingBottom: "env(safe-area-inset-bottom)",
+          zIndex: 200,
+        } as React.CSSProperties}
+      >
+        {sidebarContent}
+      </div>
+      {sidebarOpen && (
+        <div
+          {...sidebarResizer.separatorProps}
+          inert={rightPanelFullWidth}
+          aria-controls="session-sidebar"
+          className={`panel-resize-handle sidebar-resize-handle${sidebarResizer.isResizing ? " is-resizing" : ""}`}
+          data-resize-handle="sidebar"
+          title={`${translate("layout.resizeSidebar")}: ${translate("layout.resizeHint")}`}
+        />
+      )}
+
+      {/* Main column: everything right of the sidebar. The topbar starts at the
+          center column so the sidebar runs the full window height. */}
+      <div style={{ flex: 1, display: "flex", flexDirection: "column", minWidth: 0, overflow: "hidden" }}>
         {/* Top bar with sidebar toggle */}
         <div
           ref={topBarRef}
           className={`app-topbar${desktopChrome.isMacOS && (!sidebarOpen || isMobile) ? " app-topbar--mac-inset" : ""}${!rightPanelOpen ? " app-topbar--panel-closed" : ""}`}
           {...desktopChrome.dragRegionProps}
           {...windowDrag}
-          style={{ display: "flex", alignItems: "center", flexShrink: 0, borderBottom: "1px solid var(--border)", height: "calc(36px + env(safe-area-inset-top))", paddingTop: "env(safe-area-inset-top)", background: "var(--bg-panel)", paddingLeft: !isMobile && sidebarOpen ? sidebarResizer.width : 0 }}
+          style={{ display: "flex", alignItems: "center", flexShrink: 0, height: "calc(36px + env(safe-area-inset-top))", paddingTop: "env(safe-area-inset-top)", background: "var(--bg-panel)" }}
         >
           {/* Sidebar reopen — only while the sidebar (and its own toggle) is hidden */}
           {!sidebarOpen && !rightPanelOpen && (
@@ -1925,6 +1813,7 @@ export function AppShell() {
                 display: "flex", alignItems: "center", justifyContent: "center",
                 width: TOP_BAR_ICON_BUTTON_SIZE, height: TOP_BAR_ICON_BUTTON_SIZE, padding: 0,
                 background: "none", border: "none", borderRight: "1px solid var(--border)",
+                order: -2,
                 color: "var(--text-muted)", cursor: "pointer", flexShrink: 0, transition: "color 0.12s",
               }}
               onMouseEnter={(e) => { e.currentTarget.style.color = "var(--text)"; }}
@@ -2247,12 +2136,7 @@ export function AppShell() {
               })()}
             </div>
           )}
-          {!isMobile && (
-            <>
-              {renderProjectTrustWarning(false)}
-              {renderSessionStatsButton(false)}
-            </>
-          )}
+          {!isMobile && renderProjectTrustWarning(false)}
           {!isMobile && renderMainFileToggle(false)}
           {isMobile && sessionHasBranches && (
             <BranchNavigator
@@ -2516,53 +2400,7 @@ export function AppShell() {
 
           <WindowControls />
         </div>
-      <div style={{ display: "flex", flex: 1, minHeight: 0, overflow: "hidden" }}>
-      {/* Mobile overlay backdrop */}
-      <div
-        className={`sidebar-overlay-backdrop${mobileSidebarReady ? "" : " sidebar-mobile-pending"}`}
-        onClick={() => setSidebarOpen(false)}
-        style={{
-          position: "fixed",
-          inset: 0,
-          zIndex: 199,
-          background: "rgba(0,0,0,0.4)",
-          opacity: sidebarOpen ? 1 : 0,
-          pointerEvents: sidebarOpen ? "auto" : "none",
-          transition: "opacity 0.25s ease",
-        }}
-      />
-
-      {/* Left sidebar */}
-      <div
-        ref={sidebarResizer.panelRef}
-        id="session-sidebar"
-        className={`app-sidebar sidebar-container${sidebarOpen ? " sidebar-open" : " sidebar-closed"}${mobileSidebarReady ? "" : " sidebar-mobile-pending"}${sidebarResizer.isResizing ? " sidebar-resizing" : ""}`}
-        inert={rightPanelFullWidth}
-        style={{
-          "--sidebar-width": `${sidebarResizer.width}px`,
-          background: "var(--bg-panel)",
-          borderRight: "1px solid var(--border)",
-          display: "flex",
-          flexDirection: "column",
-          flexShrink: 0,
-          paddingTop: "env(safe-area-inset-top)",
-          paddingBottom: "env(safe-area-inset-bottom)",
-          zIndex: 200,
-        } as React.CSSProperties}
-      >
-        {sidebarContent}
-      </div>
-      {sidebarOpen && (
-        <div
-          {...sidebarResizer.separatorProps}
-          inert={rightPanelFullWidth}
-          aria-controls="session-sidebar"
-          className={`panel-resize-handle sidebar-resize-handle${sidebarResizer.isResizing ? " is-resizing" : ""}`}
-          data-resize-handle="sidebar"
-          title={`${translate("layout.resizeSidebar")}: ${translate("layout.resizeHint")}`}
-        />
-      )}
-
+        <div style={{ display: "flex", flex: 1, minHeight: 0, overflow: "hidden" }}>
       {/* Center: chat */}
       <div inert={rightPanelFullWidth} style={{ flex: 1, display: "flex", flexDirection: "column", overflow: "hidden", minWidth: 0 }}>
         {isMobile && renderProjectTrustWarning(true)}
@@ -2652,21 +2490,26 @@ export function AppShell() {
         </div>
       </div>
 
-      <button
-        type="button"
-        className={`right-panel-toggle-button${rightPanelOpen ? " is-open" : ""}`}
-        onClick={handleRightPanelToggle}
-        aria-controls="file-panel"
-        aria-expanded={rightPanelOpen}
-        title={rightPanelOpen ? translate("files.hidePanel") : translate("files.showPanel")}
-        aria-label={rightPanelOpen ? translate("files.hidePanel") : translate("files.showPanel")}
-        aria-pressed={rightPanelOpen}
-      >
-        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.9" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
-          <rect x="3" y="3" width="18" height="18" rx="2" />
-          <line x1="15" y1="3" x2="15" y2="21" />
-        </svg>
-      </button>
+      {/* Mobile keeps this fixed toggle (the desktop topbar renders its own);
+          rendering both on desktop stacks two overlapping icons whose clicks
+          intercept each other. */}
+      {isMobile && (
+        <button
+          type="button"
+          className={`right-panel-toggle-button${rightPanelOpen ? " is-open" : ""}`}
+          onClick={handleRightPanelToggle}
+          aria-controls="file-panel"
+          aria-expanded={rightPanelOpen}
+          title={rightPanelOpen ? translate("files.hidePanel") : translate("files.showPanel")}
+          aria-label={rightPanelOpen ? translate("files.hidePanel") : translate("files.showPanel")}
+          aria-pressed={rightPanelOpen}
+        >
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.9" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+            <rect x="3" y="3" width="18" height="18" rx="2" />
+            <line x1="15" y1="3" x2="15" y2="21" />
+          </svg>
+        </button>
+      )}
 
       <div
         aria-hidden="true"
@@ -2760,14 +2603,6 @@ export function AppShell() {
               title={translate(fileTreeOpen ? "contextPanel.hideFileList" : "contextPanel.showFileList")}
               aria-label={translate(fileTreeOpen ? "contextPanel.hideFileList" : "contextPanel.showFileList")}
               aria-pressed={fileTreeOpen}
-              style={{
-                display: "flex", alignItems: "center", justifyContent: "center",
-                width: TOP_BAR_ICON_BUTTON_SIZE, height: TOP_BAR_ICON_BUTTON_SIZE, padding: 0,
-                background: fileTreeOpen ? "var(--bg-selected)" : "none",
-                border: "none", borderLeft: "1px solid var(--border)",
-                color: fileTreeOpen ? "var(--text)" : "var(--text-muted)",
-                cursor: "pointer", flexShrink: 0, transition: "color 0.12s, background 0.12s",
-              }}
             >
               <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
                 <path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2Z" /><path d="M15 7v10" />
@@ -2791,19 +2626,12 @@ export function AppShell() {
           </button>
           <button
             type="button"
+            className="file-workbench-icon-button"
             onClick={() => setRightPanelOpen(false)}
             aria-controls="file-panel"
             aria-expanded={rightPanelOpen}
             title={translate("files.hidePanel")}
             aria-label={translate("files.hidePanel")}
-            style={{
-              display: "flex", alignItems: "center", justifyContent: "center",
-              width: TOP_BAR_ICON_BUTTON_SIZE, height: TOP_BAR_ICON_BUTTON_SIZE, padding: 0,
-              background: "var(--bg-selected)", border: "none", borderLeft: "1px solid var(--border)",
-              color: "var(--text)", cursor: "pointer", flexShrink: 0, transition: "color 0.12s",
-            }}
-            onMouseEnter={(event) => { event.currentTarget.style.color = "var(--accent)"; }}
-            onMouseLeave={(event) => { event.currentTarget.style.color = "var(--text)"; }}
           >
             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
               <rect x="3" y="3" width="18" height="18" rx="2" /><line x1="15" y1="3" x2="15" y2="21" />
@@ -2948,6 +2776,8 @@ export function AppShell() {
             </>
           )}
       </div>
+        </div>
+      </div>
       </div>
     </div>
     {settingsSection && (
@@ -2963,6 +2793,37 @@ export function AppShell() {
         }}
         onSessionReloaded={() => setSessionKey((key) => key + 1)}
       />
+    )}
+    {settingsMenuOpen && settingsMenuPos && createPortal(
+      <div
+        ref={settingsMenuRef}
+        className="sidebar-project-context-menu settings-entry-menu native-popover"
+        style={{ top: settingsMenuPos.top, left: settingsMenuPos.left }}
+        role="menu"
+        aria-label={translate("common.settings")}
+      >
+        {SETTINGS_SECTION_ITEMS.map((item) => {
+          const label = translate(item.labelKey);
+          const disabled = item.requiresProject && !projectTrustCwd;
+          return (
+            <button
+              key={item.id}
+              type="button"
+              role="menuitem"
+              disabled={disabled}
+              title={disabled ? translate("settings.projectRequired") : label}
+              onClick={() => {
+                closeSettingsMenu();
+                setSettingsSection(item.id);
+              }}
+            >
+              <SettingsSectionIcon section={item.id} size={14} strokeWidth={2} />
+              <span>{label}</span>
+            </button>
+          );
+        })}
+      </div>,
+      document.body,
     )}
     {projectTrustDialogOpen && projectTrustCwd && (
       <ProjectTrustDialog

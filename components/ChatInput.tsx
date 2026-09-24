@@ -31,9 +31,7 @@ import { ImagePreview } from "./ImagePreview";
 import { useIsMobile } from "@/hooks/useIsMobile";
 import { useI18n } from "@/hooks/useI18n";
 import type { ReactNode } from "react";
-import type { ExtensionStatusItem } from "@/lib/types";
 import type { ContextUsage, SessionStatsInfo } from "@/lib/pi-types";
-import { ExtensionStatusBar } from "./ExtensionStatusBar";
 import { ContextUsageRing } from "./ContextUsageRing";
 import { useChatAppearance } from "@/hooks/useChatAppearance";
 import type { ToolPreset } from "@/lib/tool-presets";
@@ -116,8 +114,6 @@ interface Props {
   onProjectChange?: (projectRoot: string) => void;
   /** Focus the textarea on mount / when this becomes true (e.g. New task page). */
   autoFocus?: boolean;
-  /** Extension footer statuses (tools/err/last, etc.) shown next to the model selector */
-  extensionStatuses?: ExtensionStatusItem[];
   /** Live context-window usage (numerator) for the usage ring next to the model selector */
   contextUsage?: ContextUsage | null;
   /** Session token summary shown when hovering the usage ring */
@@ -683,7 +679,6 @@ export const ChatInput = forwardRef<ChatInputHandle, Props>(function ChatInput({
   projectOptions = [],
   onProjectChange,
   autoFocus = false,
-  extensionStatuses = [],
   contextUsage,
   sessionStats,
   onSessionStatsPanelOpen,
@@ -1924,7 +1919,6 @@ export const ChatInput = forwardRef<ChatInputHandle, Props>(function ChatInput({
         border: 0,
         background: "transparent",
         padding: compact ? 0 : "0 16px 8px",
-        paddingRight: compact ? 0 : isMobile ? 16 : 52, // desktop: 16px base + 36px for ChatMinimap alignment
         opacity: builtinCommandPending ? 0.5 : 1,
         transition: "opacity 0.15s",
       }}
@@ -2836,7 +2830,6 @@ export const ChatInput = forwardRef<ChatInputHandle, Props>(function ChatInput({
               />
             )}
             <ContextUsageRing contextUsage={contextUsage} sessionStats={sessionStats} onOpenStats={onSessionStatsPanelOpen} />
-            <ExtensionStatusBar statuses={extensionStatuses} />
           </div>
 
           {/* spacer */}

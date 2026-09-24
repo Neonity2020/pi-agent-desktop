@@ -526,7 +526,7 @@ test("restores an in-page session viewport without the default tail jump", () =>
   assert.match(chatWindowSource, /context\.oldestEntryId === position\.oldestEntryId/);
   assert.match(chatWindowSource, /if \(!context\) \{\s*scrollToBottom\("instant"\);\s*setPendingScrollRestore\(null\);/);
   assert.match(chatWindowSource, /scrollToMessage\(element, position\.anchorOffset\)/);
-  assert.match(chatWindowSource, /visibility: pendingScrollRestore \? "hidden" : undefined/);
+  assert.match(chatWindowSource, /visibility: pendingScrollRestore && !loading \? "hidden" : undefined/);
 });
 
 test("keeps a newly sent user message at the top while its response starts", () => {

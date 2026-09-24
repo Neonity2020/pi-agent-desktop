@@ -4,7 +4,6 @@ import { useState, useCallback, useRef, useEffect, useLayoutEffect, useMemo, use
 import type {
   AgentMessage,
   BlockingExtensionUiRequest,
-  ExtensionStatusItem,
   ExtensionUiRequest,
   ExtensionWidgetItem,
   SessionInfo,
@@ -87,7 +86,6 @@ type AgentStateResponse = {
   isCompacting?: boolean;
   /** In-memory partial assistant message, present while a run is streaming. */
   streamingMessage?: AgentMessage;
-  extensionStatuses?: ExtensionStatusItem[];
   extensionWidgets?: ExtensionWidgetItem[];
   queuedMessages?: { steering?: string[]; followUp?: string[] } | null;
   autoCompactionEnabled?: boolean;
@@ -388,7 +386,6 @@ export function useAgentSession(opts: UseAgentSessionOptions) {
   const [sessionStatsOverride, setSessionStatsOverride] = useState<SessionStatsInfo | null>(null);
   const [extensionDialog, setExtensionDialog] = useState<ExtensionUiDialogRequest | null>(null);
   const [extensionCustomUi, setExtensionCustomUi] = useState<ExtensionUiCustomRequest | null>(null);
-  const [extensionStatuses, setExtensionStatuses] = useState<ExtensionStatusItem[]>([]);
   const [extensionWidgets, setExtensionWidgets] = useState<ExtensionWidgetItem[]>([]);
   const [queuedMessages, setQueuedMessages] = useState<QueuedMessages>({ steering: [], followUp: [] });
 
@@ -536,7 +533,6 @@ export function useAgentSession(opts: UseAgentSessionOptions) {
     setAgentPhase(null);
     setContextUsage(null);
     setSystemPrompt(null);
-    setExtensionStatuses([]);
     setExtensionWidgets([]);
     setQueuedMessages({ steering: [], followUp: [] });
     setLiveModel(null);
@@ -703,7 +699,6 @@ export function useAgentSession(opts: UseAgentSessionOptions) {
         if (liveState) {
           if (liveState.contextUsage !== undefined) setContextUsage(liveState.contextUsage ?? null);
           if (liveState.systemPrompt !== undefined) setSystemPrompt(liveState.systemPrompt ?? null);
-          if (liveState.extensionStatuses !== undefined) setExtensionStatuses(liveState.extensionStatuses ?? []);
           if (liveState.extensionWidgets !== undefined) setExtensionWidgets(liveState.extensionWidgets ?? []);
           if (liveState.queuedMessages !== undefined) setQueuedMessages(normalizeQueuedMessages(liveState.queuedMessages));
           if (liveState.autoCompactionEnabled !== undefined) setAutoCompactionEnabled(liveState.autoCompactionEnabled ?? true);
@@ -1057,14 +1052,6 @@ export function useAgentSession(opts: UseAgentSessionOptions) {
         });
         break;
       }
-      case "setStatus":
-        setExtensionStatuses((prev) => {
-          const rest = prev.filter((item) => item.key !== request.statusKey);
-          return request.statusText !== undefined
-            ? [...rest, { key: request.statusKey, text: request.statusText }]
-            : rest;
-        });
-        break;
       case "setWidget":
         setExtensionWidgets((prev) => updateExtensionWidgets(
           prev,
@@ -1281,7 +1268,6 @@ export function useAgentSession(opts: UseAgentSessionOptions) {
       if (state) {
         if (state.contextUsage !== undefined) setContextUsage(state.contextUsage ?? null);
         if (state.systemPrompt !== undefined) setSystemPrompt(state.systemPrompt ?? null);
-        if (state.extensionStatuses !== undefined) setExtensionStatuses(state.extensionStatuses ?? []);
         if (state.extensionWidgets !== undefined) setExtensionWidgets(state.extensionWidgets ?? []);
       }
       await finishPromptWithoutStream(sid, runId);
@@ -1367,7 +1353,6 @@ export function useAgentSession(opts: UseAgentSessionOptions) {
               syncLiveModel(d.state);
               if (d.state?.contextUsage !== undefined) setContextUsage(d.state.contextUsage ?? null);
               if (d.state?.systemPrompt !== undefined) setSystemPrompt(d.state.systemPrompt ?? null);
-              if (d.state?.extensionStatuses !== undefined) setExtensionStatuses(d.state.extensionStatuses ?? []);
               if (d.state?.extensionWidgets !== undefined) setExtensionWidgets(d.state.extensionWidgets ?? []);
               // Aborted turns can leave messages queued in pi (delivered with the
               // next turn); dead wrapper (no state) means the queue is gone.
@@ -2269,7 +2254,6 @@ export function useAgentSession(opts: UseAgentSessionOptions) {
         }
       }
       setSlashCommands([]);
-      setExtensionStatuses([]);
       setExtensionWidgets([]);
       const [state] = await Promise.all([
         sendAgentCommand<AgentStateResponse>(activeSessionId, { type: "get_state" }),
@@ -2381,7 +2365,6 @@ export function useAgentSession(opts: UseAgentSessionOptions) {
           if (agentState.state.isCompacting !== undefined) setIsCompacting(agentState.state.isCompacting);
           if (agentState.state.contextUsage !== undefined) setContextUsage(agentState.state.contextUsage ?? null);
           if (agentState.state.systemPrompt !== undefined) setSystemPrompt(agentState.state.systemPrompt ?? null);
-          if (agentState.state.extensionStatuses !== undefined) setExtensionStatuses(agentState.state.extensionStatuses ?? []);
           if (agentState.state.extensionWidgets !== undefined) setExtensionWidgets(agentState.state.extensionWidgets ?? []);
           if (agentState.state.queuedMessages !== undefined) setQueuedMessages(normalizeQueuedMessages(agentState.state.queuedMessages));
         }
@@ -2562,7 +2545,7 @@ export function useAgentSession(opts: UseAgentSessionOptions) {
     retryInfo, contextUsage, systemPrompt, forkingEntryId, retryLoad, dismissModelScopeWarnings,
     isCompacting, compactError, compactResult, currentModel, displayModel, modelSwitching, sessionStats,
     slashCommands, slashCommandsLoading, queuedMessages,
-    notices: noticeState.visible, addNotice, extensionDialog, extensionCustomUi, extensionStatuses, extensionWidgets, respondToExtensionUi, sendExtensionCustomInput,
+    notices: noticeState.visible, addNotice, extensionDialog, extensionCustomUi, extensionWidgets, respondToExtensionUi, sendExtensionCustomInput,
     isAutoModelSelection: isNew && newSessionModel === null,
     isAutoThinkingSelection: isNew && newSessionThinkingLevel === null,
     agentPhase,

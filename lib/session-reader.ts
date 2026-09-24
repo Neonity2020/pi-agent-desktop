@@ -465,28 +465,36 @@ export function getLatestModelChange(entries: SessionEntry[]): SessionContext["m
   return null;
 }
 
+/** Model from the newest assistant response metadata — the fallback the
+ *  pre-wrapper UI displays when a session has no model_change entries. */
+export function getLatestResponseModel(entries: SessionEntry[]): SessionContext["model"] {
+  for (let i = entries.length - 1; i >= 0; i--) {
+    const entry = entries[i];
+    if (entry.type === "message" && entry.message.role === "assistant") {
+      const message = entry.message as { provider?: unknown; model?: unknown };
+      if (typeof message.provider === "string" && typeof message.model === "string") {
+        return { provider: message.provider, modelId: message.model };
+      }
+    }
+  }
+  return null;
+}
+
 function getSessionSettings(entries: SessionEntry[], leafId?: string | null): Pick<SessionContext, "thinkingLevel" | "model"> {
   if (leafId === null) return { thinkingLevel: "off", model: null };
   const branch = sliceActiveBranch(entries, leafId ?? null, entries.length);
   let thinkingLevel: string | undefined;
-  let responseModel: SessionContext["model"] | undefined;
 
-  for (let i = branch.length - 1; i >= 0 && (thinkingLevel === undefined || responseModel === undefined); i--) {
+  for (let i = branch.length - 1; i >= 0 && thinkingLevel === undefined; i--) {
     const entry = branch[i];
-    if (thinkingLevel === undefined && entry.type === "thinking_level_change") {
+    if (entry.type === "thinking_level_change") {
       thinkingLevel = entry.thinkingLevel;
-    }
-    if (responseModel === undefined && entry.type === "message" && entry.message.role === "assistant") {
-      const message = entry.message as { provider?: unknown; model?: unknown };
-      if (typeof message.provider === "string" && typeof message.model === "string") {
-        responseModel = { provider: message.provider, modelId: message.model };
-      }
     }
   }
 
   return {
     thinkingLevel: thinkingLevel ?? "off",
-    model: getLatestModelChange(branch) ?? responseModel ?? null,
+    model: getLatestModelChange(branch) ?? getLatestResponseModel(branch),
   };
 }
 

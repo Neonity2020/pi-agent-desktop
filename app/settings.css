@@ -929,6 +929,24 @@
   overflow-y: auto;
 }
 
+/* Wide dialogs: split the sections into two explicit columns so the General
+   tab does not leave a large blank band beside the 680px single column.
+   Grid items establish their own formatting context, so both columns keep
+   their leading section margin and start at the same height; stacked below
+   the breakpoint the first child's margin collapses through as before. */
+@media (min-width: 880px) {
+  .settings-general {
+    max-width: none;
+  }
+
+  .settings-general-columns {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    align-items: start;
+    column-gap: clamp(36px, 5vw, 64px);
+  }
+}
+
 .settings-general-title {
   margin: 0;
   color: var(--text);

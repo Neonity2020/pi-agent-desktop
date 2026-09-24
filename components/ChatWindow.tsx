@@ -14,7 +14,6 @@ import { MessageView } from "./MessageView";
 import { MarkdownBody } from "./MarkdownBody";
 import { ChatInput, type ChatInputHandle } from "./ChatInput";
 import { ConversationNavigator, type ConversationTurnLocation } from "./ConversationNavigator";
-import { ExtensionStatusBar } from "./ExtensionStatusBar";
 import { ExtensionWidgets } from "./ExtensionWidgets";
 import { AnsiText } from "./AnsiText";
 import { useI18n } from "@/hooks/useI18n";
@@ -328,7 +327,7 @@ function NewSessionUpdateLink({
   );
 }
 
-export function ChatWindow({ session, searchTarget, onSearchTargetHandled, initialScrollPosition, onScrollPositionChange, sessionRunning, newSessionCwd, newSessionDraftKey, onAgentEnd, onAttentionNeeded, onSessionCreated, onSessionForked, modelsRefreshKey, chatInputRef, onBranchDataChange, onSystemPromptChange, onSystemToolsChange, onSystemInfoLoaderChange, onSessionStatsChange, onSessionStatsPanelOpen, onContextUsageChange, onOpenFile, onOpenSession, onAskInNewChat, onSelectProject, projectOptions, onProjectChange, onProjectFilesImported, onOpenModelsConfig, quoteSelectionEnabled = false, initialPrompt, onInitialPromptConsumed, soundEnabled = true, onSoundToggle, playDoneSound = () => {}, unlockAudio }: Props) {
+export function ChatWindow({ session, searchTarget, onSearchTargetHandled, initialScrollPosition, onScrollPositionChange, sessionRunning, newSessionCwd, newSessionDraftKey, onAgentEnd, onAttentionNeeded, onSessionCreated, onSessionForked, modelsRefreshKey, chatInputRef, onBranchDataChange, onSystemPromptChange, onSystemToolsChange, onSystemInfoLoaderChange, onSessionStatsChange, onSessionStatsPanelOpen, onContextUsageChange, onOpenFile, onOpenSession, onAskInNewChat, onSelectProject, projectOptions, onProjectChange, onProjectFilesImported, onOpenModelsConfig, quoteSelectionEnabled = true, initialPrompt, onInitialPromptConsumed, soundEnabled = true, onSoundToggle, playDoneSound = () => {}, unlockAudio }: Props) {
   const { t } = useI18n();
   const isMobile = useIsMobile();
   const messageRefs = useRef<Record<number, HTMLDivElement | null>>({});
@@ -368,7 +367,7 @@ export function ChatWindow({ session, searchTarget, onSearchTargetHandled, initi
     retryInfo, contextUsage, forkingEntryId, summarizationRetry, automation, handleSetAutomation,
     isCompacting, compactError, compactResult, displayModel: displayModelValue, modelSwitching, sessionStats,
     slashCommands, slashCommandsLoading, queuedMessages,
-    notices, extensionDialog, extensionCustomUi, extensionStatuses, extensionWidgets, respondToExtensionUi, sendExtensionCustomInput, setNoticePaused,
+    notices, extensionDialog, extensionCustomUi, extensionWidgets, respondToExtensionUi, sendExtensionCustomInput, setNoticePaused,
     isAutoModelSelection,
     isAutoThinkingSelection,
     agentPhase,
@@ -1126,14 +1125,6 @@ export function ChatWindow({ session, searchTarget, onSearchTargetHandled, initi
     />
   );
 
-  if (loading) {
-    return (
-      <div className="flex h-full items-center justify-center text-text-muted">
-         {t("chat.loadingSession")}
-      </div>
-    );
-  }
-
   if (error) {
     return (
       <div className="flex h-full flex-col items-center justify-center gap-3 px-6 text-center text-red-400">
@@ -1234,11 +1225,13 @@ export function ChatWindow({ session, searchTarget, onSearchTargetHandled, initi
         <div
           ref={scrollContainerRef}
           className="min-w-0 flex-1 overflow-x-hidden overflow-y-auto pt-4 [scrollbar-width:none]"
-          style={{ visibility: pendingScrollRestore ? "hidden" : undefined }}
+          style={{ visibility: pendingScrollRestore && !loading ? "hidden" : undefined }}
         >
           <div style={{ minWidth: 0, padding: `0 ${CHAT_COLUMN_PADDING}px` }}>
             <div ref={messageContentRef} onPointerUp={captureQuotedSelection} style={{ width: "100%", minWidth: 0, maxWidth: "var(--chat-content-max-width, 820px)", margin: "0 auto" }}>
-            {(() => {
+            {loading ? (
+              <div className="chat-loading-hint">{t("chat.loadingSession")}</div>
+            ) : (() => {
               let lastUserIdx = -1;
               for (let i = messages.length - 1; i >= 0; i--) {
                 if (messages[i].role === "user") { lastUserIdx = i; break; }
@@ -1587,7 +1580,7 @@ export function ChatWindow({ session, searchTarget, onSearchTargetHandled, initi
           </div>
         )}
         {isEmptyNew && (
-          <div className="mb-3 w-full" style={{ paddingLeft: 16, paddingRight: isMobile ? 16 : 52 }}>
+          <div className="mb-3 w-full" style={{ padding: "0 16px" }}>
             <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12, maxWidth: "var(--chat-content-max-width, 820px)", margin: "0 auto", fontFamily: "var(--font-mono)" }}>
               <div style={{ display: "flex", alignItems: "center", gap: isMobile ? 7 : 10, minWidth: 0, flex: 1, lineHeight: 1.4, overflow: "hidden" }}>
                 <Image src="/icons/apple-touch-icon.png" width={32} height={32} alt="" priority style={{ flexShrink: 0 }} />
@@ -1598,14 +1591,18 @@ export function ChatWindow({ session, searchTarget, onSearchTargetHandled, initi
           </div>
         )}
         {aboveEditorWidgets.length > 0 && (
-          <div className="mb-2 w-full" style={{ paddingLeft: 16, paddingRight: isMobile ? 16 : 52 }}>
+          <div className="mb-2 w-full" style={{ padding: "0 16px" }}>
             <div style={{ maxWidth: "var(--chat-content-max-width, 820px)", margin: "0 auto" }}>
               <ExtensionWidgets widgets={aboveEditorWidgets} />
             </div>
           </div>
         )}
         {chatInputElement}
-        <ExtensionStatusBar statuses={extensionStatuses} widgets={belowEditorWidgets} />
+        {belowEditorWidgets.length > 0 && (
+          <div className="extension-status-shelf has-widgets">
+            <ExtensionWidgets widgets={belowEditorWidgets} />
+          </div>
+        )}
       </div>
       {isEmptyNew && <div className="min-h-0 flex-1" />}
     </div>

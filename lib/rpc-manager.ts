@@ -12,7 +12,7 @@ import {
   createProjectCommandBashOperations,
   preferUserBashExtension,
 } from "./project-command-env";
-import { cacheSessionPath, getLatestModelChange, invalidateSessionListCache, readLatestSessionEntryId, resolveSessionPath } from "./session-reader";
+import { cacheSessionPath, getLatestModelChange, getLatestResponseModel, invalidateSessionListCache, readLatestSessionEntryId, resolveSessionPath } from "./session-reader";
 import { getProjectTrustStatus, projectTrustReloadOptions } from "./project-trust";
 import { persistExplicitStartupPreferences } from "./startup-preferences";
 import { notifySessionComplete } from "./web-push";
@@ -2183,8 +2183,13 @@ export async function startRpcSession(
     const defaultModelId = services.settingsManager.getDefaultModel();
     const branch = sessionManager.getBranch();
     const hasExistingMessages = branch.some((entry) => entry.type === "message");
+    // Mirror getSessionSettings(): the pre-wrapper UI shows the last
+    // model_change, falling back to assistant response metadata — restore the
+    // same model here so the displayed model cannot jump when the wrapper
+    // lazily starts and would otherwise land on the configured default.
     const savedModel = hasExistingMessages
       ? getLatestModelChange(branch as unknown as SessionEntry[])
+        ?? getLatestResponseModel(branch as unknown as SessionEntry[])
       : null;
     const restoredModel = savedModel
       ? services.modelRuntime.getModel(savedModel.provider, savedModel.modelId)
