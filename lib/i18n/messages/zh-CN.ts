@@ -108,6 +108,7 @@ export const zhCNLocale: LocalePlugin = {
     "agentSwitcher.runningCount": "{count} 个运行中",
     "agentSwitcher.search": "搜索 Agents",
     "agentSwitcher.noMatches": "没有匹配的 Agent",
+    "agentSwitcher.none": "此会话没有子 Agent",
     "agentSwitcher.stop": "停止子代理",
     "agentSwitcher.steer": "引导子代理",
     "agentSwitcher.steerPlaceholder": "发送引导消息…",

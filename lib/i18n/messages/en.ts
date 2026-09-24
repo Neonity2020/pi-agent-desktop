@@ -108,6 +108,7 @@ export const enLocale: LocalePlugin = {
     "agentSwitcher.runningCount": "{count} running",
     "agentSwitcher.search": "Search agents",
     "agentSwitcher.noMatches": "No matching agents",
+    "agentSwitcher.none": "No sub-agents in this session",
     "agentSwitcher.stop": "Stop sub-agent",
     "agentSwitcher.steer": "Steer sub-agent",
     "agentSwitcher.steerPlaceholder": "Send a steering message…",

@@ -108,6 +108,7 @@ export const zhTWLocale: LocalePlugin = {
     "agentSwitcher.runningCount": "{count} 個執行中",
     "agentSwitcher.search": "搜尋 Agents",
     "agentSwitcher.noMatches": "找不到相符的 Agent",
+    "agentSwitcher.none": "此會話沒有子 Agent",
     "agentSwitcher.stop": "停止子代理",
     "agentSwitcher.steer": "引導子代理",
     "agentSwitcher.steerPlaceholder": "發送引導訊息…",

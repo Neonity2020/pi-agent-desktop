@@ -414,6 +414,8 @@ export function AppShell() {
   // Single active panel — only one dropdown open at a time
   const [activeTopPanel, setActiveTopPanel] = useState<"agents" | "branches" | "system" | "tools" | "session" | null>(null);
   const [topPanelPos, setTopPanelPos] = useState<{ top: number; left: number; width: number } | null>(null);
+  // Viewport is wide enough for the file panel to split the row (not overlay)
+  const [wideSplitLayout, setWideSplitLayout] = useState(false);
 
   useEffect(() => {
     if (!sessionHasBranches) {
@@ -570,21 +572,30 @@ export function AppShell() {
     if (!activeTopPanel || !topBarRef.current) return;
     const update = () => {
       const topBarRect = topBarRef.current!.getBoundingClientRect();
+      // The dropdowns are fixed children of the top bar's stacking context
+      // (z-index 90), so the sidebar and the wide-desktop file panel paint
+      // over them. Keep them inside the region those columns don't cover.
+      // Narrower widths render the file panel as an overlay beneath this
+      // dropdown's z-index, so only the split layout is reserved.
+      const sidebarReserved = sidebarOpen && !isMobile ? sidebarResizer.width : 0;
+      const panelReserved = rightPanelOpen && !isMobile && wideSplitLayout ? rightPanelWidth : 0;
+      const left = topBarRect.left + sidebarReserved;
+      const available = Math.max(0, topBarRect.width - sidebarReserved - panelReserved);
       if (activeTopPanel === "agents") {
         setTopPanelPos({
           top: topBarRect.bottom,
-          left: topBarRect.left,
-          width: Math.min(AGENT_PANEL_WIDTH, topBarRect.width),
+          left,
+          width: Math.min(AGENT_PANEL_WIDTH, available),
         });
         return;
       }
-      setTopPanelPos({ top: topBarRect.bottom, left: topBarRect.left, width: topBarRect.width });
+      setTopPanelPos({ top: topBarRect.bottom, left, width: available });
     };
     update();
     const ro = new ResizeObserver(update);
     ro.observe(topBarRef.current);
     return () => ro.disconnect();
-  }, [activeTopPanel, isMobile]);
+  }, [activeTopPanel, isMobile, sidebarOpen, sidebarResizer.width, rightPanelOpen, rightPanelWidth, wideSplitLayout]);
 
   // Files unmount when inactive; workspace terminals stay mounted until closed.
   const [fileTabs, setFileTabs] = useState<Tab[]>([]);
@@ -2025,6 +2036,8 @@ export function AppShell() {
                 open={activeTopPanel === "branches"}
                 onToggle={() => toggleTopPanel("branches")}
                 hasSession
+                reserveLeft={sidebarOpen && !isMobile ? sidebarResizer.width : 0}
+                reserveRight={rightPanelOpen && !isMobile && wideSplitLayout ? rightPanelWidth : 0}
               />
               {(() => {
                 // Persisted stats win so compressed sessions can still name
@@ -2472,7 +2485,10 @@ export function AppShell() {
                     return (
                       <div style={{
                         display: "grid",
-                        gridTemplateColumns: isMobile
+                        // The clamped popover can be narrower than the three
+                        // columns' combined min width (~770px); stack instead
+                        // of overflowing under the file panel.
+                        gridTemplateColumns: isMobile || topPanelPos.width < 780
                           ? "1fr"
                           : "minmax(360px, 1.7fr) minmax(140px, 0.55fr) minmax(190px, 0.75fr)",
                         gap: isMobile ? 16 : 24,
