@@ -19,7 +19,6 @@ const FileExplorer = dynamic(() => import("./FileExplorer").then((m) => m.FileEx
 const ModelsConfig = dynamic(() => import("./ModelsConfig").then((m) => m.ModelsConfig), { ssr: false });
 const SkillsConfig = dynamic(() => import("./SkillsConfig").then((m) => m.SkillsConfig), { ssr: false });
 const PluginsConfig = dynamic(() => import("./PluginsConfig").then((m) => m.PluginsConfig), { ssr: false });
-const AppSettings = dynamic(() => import("./AppSettings").then((m) => m.AppSettings), { ssr: false });
 import { SessionStatsPanel } from "./SessionStatsPanel";
 import { ProjectTrustDialog } from "./ProjectTrustDialog";
 import { BranchNavigator, hasSessionBranches } from "./BranchNavigator";
@@ -215,7 +214,6 @@ export function AppShell() {
   const [modelsRefreshKey, setModelsRefreshKey] = useState(0);
   const [topMoreOpen, setTopMoreOpen] = useState(false);
   const topMoreRef = useRef<HTMLDivElement>(null);
-  const [appSettingsOpen, setAppSettingsOpen] = useState(false);
   const [projectTrust, setProjectTrust] = useState<ProjectTrustStatus | null>(null);
   const [projectTrustDialogOpen, setProjectTrustDialogOpen] = useState(false);
   const [projectTrustBusy, setProjectTrustBusy] = useState(false);
@@ -333,6 +331,7 @@ export function AppShell() {
     if (typeof window === "undefined" || !window.matchMedia) return;
     const mql = window.matchMedia(`(max-width: ${SPLIT_PANEL_MIN_WIDTH - 1}px)`);
     const checkWidth = () => {
+      setWideSplitLayout(!mql.matches);
       if (mql.matches) setRightPanelOpen(false);
     };
     checkWidth();
@@ -2641,6 +2640,8 @@ export function AppShell() {
         type="button"
         className={`right-panel-toggle-button${rightPanelOpen ? " is-open" : ""}`}
         onClick={handleRightPanelToggle}
+        aria-controls="file-panel"
+        aria-expanded={rightPanelOpen}
         title={rightPanelOpen ? translate("files.hidePanel") : translate("files.showPanel")}
         aria-label={rightPanelOpen ? translate("files.hidePanel") : translate("files.showPanel")}
         aria-pressed={rightPanelOpen}
@@ -2732,8 +2733,31 @@ export function AppShell() {
               activeTabId={activeFileTabId ?? ""}
               onSelectTab={setActiveFileTabId}
               onCloseTab={handleCloseFileTab}
+              onNewTerminal={activeCwd ? () => handleOpenTerminal(activeCwd) : undefined}
             />
           </div>
+          {activeCwd && (
+            <button
+              type="button"
+              className={`file-workbench-icon-button${fileTreeOpen ? " is-active" : ""}`}
+              onClick={() => setFileTreeOpen((open) => !open)}
+              title={translate(fileTreeOpen ? "contextPanel.hideFileList" : "contextPanel.showFileList")}
+              aria-label={translate(fileTreeOpen ? "contextPanel.hideFileList" : "contextPanel.showFileList")}
+              aria-pressed={fileTreeOpen}
+              style={{
+                display: "flex", alignItems: "center", justifyContent: "center",
+                width: TOP_BAR_ICON_BUTTON_SIZE, height: TOP_BAR_ICON_BUTTON_SIZE, padding: 0,
+                background: fileTreeOpen ? "var(--bg-selected)" : "none",
+                border: "none", borderLeft: "1px solid var(--border)",
+                color: fileTreeOpen ? "var(--text)" : "var(--text-muted)",
+                cursor: "pointer", flexShrink: 0, transition: "color 0.12s, background 0.12s",
+              }}
+            >
+              <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                <path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2Z" /><path d="M15 7v10" />
+              </svg>
+            </button>
+          )}
           <button
             type="button"
             className="file-panel-expand-button"
@@ -2935,8 +2959,7 @@ export function AppShell() {
         onConfirm={() => void handleTrustProject()}
       />
     )}
-    {appSettingsOpen && <AppSettings onClose={() => setAppSettingsOpen(false)} />}
-    <UpdateReminder onOpenSettings={() => setAppSettingsOpen(true)} />
+    <UpdateReminder onOpenSettings={() => setSettingsSection("desktop")} />
     </div>
     </>
   );

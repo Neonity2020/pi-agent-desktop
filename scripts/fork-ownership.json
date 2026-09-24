@@ -52,10 +52,10 @@
       "disposition": "accepted"
     },
     "components/TabBar.tsx": {
-      "risk": "low",
-      "drift": 43,
-      "reason": "Accessibility work: role=\"tab\", aria-selected, roving tabIndex, arrow-key navigation, Enter/Space activation, plus an empty state. A generic improvement with no desktop coupling, so it cannot be extracted anywhere — the only ways to remove this drift are upstreaming it or deleting the accessibility support. Kept deliberately.",
-      "structuralDrift": 22,
+      "risk": "medium",
+      "drift": 92,
+      "reason": "Accessibility work plus the terminal-tab affordance: role=\"tab\", aria-selected, roving tabIndex, keyboard activation, and a New terminal button. The terminal action is fork interaction design inside an upstream-owned component, so incoming TabBar changes require review.",
+      "structuralDrift": 49,
       "disposition": "accepted"
     },
     "components/ChatWindow.tsx": {

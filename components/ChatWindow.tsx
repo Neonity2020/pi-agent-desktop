@@ -389,6 +389,7 @@ export function ChatWindow({ session, searchTarget, onSearchTargetHandled, initi
     session, sessionRunning, newSessionCwd, newSessionDraftKey, onAgentEnd: wrappedOnAgentEnd, onAttentionNeeded, onSessionCreated, onSessionForked,
     modelsRefreshKey, chatInputRef, onBranchDataChange, onSystemPromptChange, onSystemToolsChange, onSystemInfoLoaderChange, onSessionStatsPanelOpen,
     deferInitialScroll: Boolean(pendingScrollRestore),
+    onScrollPositionChange,
   });
   const sessionBusy = agentRunning || bashRunning;
   const [quotedSelection, setQuotedSelection] = useState<{
@@ -583,6 +584,7 @@ export function ChatWindow({ session, searchTarget, onSearchTargetHandled, initi
   const [visibleCount, setVisibleCount] = useState(
     () => (lazyLoadSessionKey != null ? sessionVisibleCounts.get(lazyLoadSessionKey) : undefined) ?? VISIBLE_PAGE_SIZE,
   );
+  const [appliedLazyLoadSessionKey, setAppliedLazyLoadSessionKey] = useState(lazyLoadSessionKey);
   const sentinelRef = useRef<HTMLDivElement>(null);
   const messageContentRef = useRef<HTMLDivElement | null>(null);
   const prevScrollDistanceRef = useRef<number | null>(null);
@@ -591,6 +593,27 @@ export function ChatWindow({ session, searchTarget, onSearchTargetHandled, initi
   const pendingScrollRestoreRef = useRef(pendingScrollRestore);
   pendingScrollRestoreRef.current = pendingScrollRestore;
   const [pendingSearchScroll, setPendingSearchScroll] = useState<Props["searchTarget"]>(null);
+
+  // ChatWindow intentionally stays mounted across session switches. Reset all
+  // per-viewport state during render so the next commit cannot paint the old
+  // session's window or consume its pending restoration state.
+  if (lazyLoadSessionKey !== appliedLazyLoadSessionKey) {
+    if (appliedLazyLoadSessionKey != null) {
+      sessionVisibleCounts.set(appliedLazyLoadSessionKey, visibleCount);
+    }
+    setAppliedLazyLoadSessionKey(lazyLoadSessionKey);
+    setVisibleCount(
+      (lazyLoadSessionKey != null ? sessionVisibleCounts.get(lazyLoadSessionKey) : undefined)
+        ?? VISIBLE_PAGE_SIZE,
+    );
+    const nextPosition = searchTarget ? null : initialScrollPosition ?? null;
+    setPendingScrollRestore(nextPosition && !nextPosition.atBottom ? nextPosition : null);
+    setRestoreAnchorReady(false);
+    restoreStartedRef.current = false;
+    loadingOlderRef.current = false;
+    prevScrollDistanceRef.current = null;
+    setPendingSearchScroll(null);
+  }
   const searchMessage = messages[entryIds.indexOf(pendingSearchScroll?.entryId ?? "")];
   const searchBlock = searchMessage?.role === "assistant"
     ? (pendingSearchScroll?.blockIndex === undefined
@@ -599,16 +622,22 @@ export function ChatWindow({ session, searchTarget, onSearchTargetHandled, initi
     : undefined;
   const searchHistoryRef = useRef({ entryIds, historyCursor, hasEarlierMessages });
   searchHistoryRef.current = { entryIds, historyCursor, hasEarlierMessages };
+  const scrollMemorySessionIdRef = useRef(session?.id ?? null);
+  scrollMemorySessionIdRef.current = session?.id ?? null;
+  const onScrollPositionChangeRef = useRef(onScrollPositionChange);
+  onScrollPositionChangeRef.current = onScrollPositionChange;
 
   useLayoutEffect(() => {
-    const sessionId = session?.id;
     const container = scrollContainerRef.current;
     const content = messageContentRef.current;
-    if (!sessionId || !onScrollPositionChange || !container || !content) return;
+    if (!container || !content) return;
     return () => {
+      const sessionId = scrollMemorySessionIdRef.current;
+      const savePosition = onScrollPositionChangeRef.current;
+      if (!sessionId || !savePosition) return;
       if (pendingScrollRestoreRef.current) return;
       if (isScrollAtTail(container.scrollTop, container.clientHeight, container.scrollHeight)) {
-        onScrollPositionChange(sessionId, { atBottom: true });
+        savePosition(sessionId, { atBottom: true });
         return;
       }
       const viewportTop = container.getBoundingClientRect().top;
@@ -619,13 +648,13 @@ export function ChatWindow({ session, searchTarget, onSearchTargetHandled, initi
       });
       const anchor = findChatScrollAnchor(candidates, viewportTop);
       if (!anchor) return;
-      onScrollPositionChange(sessionId, {
+      savePosition(sessionId, {
         atBottom: false,
         ...anchor,
         oldestEntryId: searchHistoryRef.current.historyCursor,
       });
     };
-  }, [loading, onScrollPositionChange, scrollContainerRef, session?.id]);
+  }, [scrollContainerRef]);
 
   useEffect(() => {
     if (searchTarget) setPendingScrollRestore(null);
@@ -1126,7 +1155,7 @@ export function ChatWindow({ session, searchTarget, onSearchTargetHandled, initi
 
   return (
     <div
-      className="chat-window relative flex h-full min-w-0 flex-col overflow-hidden"
+      className="chat-window chat-content relative flex h-full min-w-0 flex-col overflow-hidden"
       data-session-busy={sessionBusy ? "true" : undefined}
       style={{ paddingBottom: "env(safe-area-inset-bottom)" }}
       onDragEnter={handleDragEnter}
@@ -1192,18 +1221,6 @@ export function ChatWindow({ session, searchTarget, onSearchTargetHandled, initi
       >
         <NoticeShelf notices={notices} floating onPauseChange={setNoticePaused} />
       </div>
-
-      {isEmptyNew && (
-        <div
-          className="flex flex-1 flex-col items-center justify-center overflow-y-auto px-4 py-8"
-          style={{ scrollbarGutter: "stable" }}
-        >
-          <div className="chat-empty-state w-full" style={{ maxWidth: "var(--chat-content-max-width, 820px)" }}>
-            {chatInputElement}
-            <ExtensionStatusBar statuses={extensionStatuses} widgets={extensionWidgets} />
-          </div>
-        </div>
-      )}
 
       {/* Composer overlays the scrollport; trailing spacer clears the last lines. */}
       <div className="relative flex min-h-0 min-w-0 flex-1 overflow-hidden">
@@ -1580,8 +1597,15 @@ export function ChatWindow({ session, searchTarget, onSearchTargetHandled, initi
             </div>
           </div>
         )}
+        {aboveEditorWidgets.length > 0 && (
+          <div className="mb-2 w-full" style={{ paddingLeft: 16, paddingRight: isMobile ? 16 : 52 }}>
+            <div style={{ maxWidth: "var(--chat-content-max-width, 820px)", margin: "0 auto" }}>
+              <ExtensionWidgets widgets={aboveEditorWidgets} />
+            </div>
+          </div>
+        )}
         {chatInputElement}
-        <ExtensionStatusBar statuses={extensionStatuses} widgets={extensionWidgets} />
+        <ExtensionStatusBar statuses={extensionStatuses} widgets={belowEditorWidgets} />
       </div>
       {isEmptyNew && <div className="min-h-0 flex-1" />}
     </div>
