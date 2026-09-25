@@ -1846,8 +1846,10 @@ export function AppShell() {
           {...windowDrag}
           style={{ display: "flex", alignItems: "center", flexShrink: 0, height: "calc(36px + env(safe-area-inset-top))", paddingTop: "env(safe-area-inset-top)", background: "var(--bg-panel)" }}
         >
-          {/* Sidebar reopen — only while the sidebar (and its own toggle) is hidden */}
-          {!sidebarOpen && !rightPanelOpen && (
+          {/* Sidebar reopen — while the sidebar (and its own toggle) is hidden.
+              A wide-panel split keeps this reachable; the full-width panel covers
+              the window, so there the sidebar stays closed until it is restored. */}
+          {!sidebarOpen && !rightPanelFullWidth && (
             <button
               className="native-icon-button"
               onClick={handleSidebarToggle}
