@@ -1,7 +1,5 @@
 "use client";
 import { registerAbortHandler } from "@/hooks/useKeyboardShortcuts";
-import { PRODUCT_NAME } from "@/lib/branding";
-import Image from "next/image";
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { createPortal } from "react-dom";
 import type { AgentMessage, AssistantContentBlock, AssistantMessage, BashExecutionMessage, BlockingExtensionUiRequest, ExtensionUiRequest, SessionInfo, SessionTreeNode, ToolResultMessage, UserMessage, CustomMessage } from "@/lib/types";
@@ -306,6 +304,9 @@ function NewSessionUpdateLink({
         alignSelf: "center",
         gap: 3,
         minHeight: 32,
+        // The chip owns the gap above the composer: the row that hosts it is
+        // empty (zero height, no margin) whenever no update is pending.
+        marginBottom: 12,
         minWidth: 0,
         padding: "0 4px",
         background: "transparent",
@@ -946,6 +947,32 @@ export function ChatWindow({ session, searchTarget, onSearchTargetHandled, initi
 
   const isEmptyNew = isNew && !loading && !error && messages.length === 0 && !streamState.isStreaming && !sessionBusy;
   useScrollbarVisibility(scrollContainerRef, Boolean(session?.id) || !isEmptyNew);
+
+  // The message scrollport reserves its scrollbar gutter, so the column centred
+  // inside it sits half a scrollbar left of the composer's, which still centres
+  // on the full width — the two never line up. A hidden twin of the scrollport
+  // reports how wide that gutter is (even before the first message renders a
+  // scrollbar), and the composer reserves the same amount, so both columns
+  // share one axis and keep it as the scrollbar appears or disappears.
+  const scrollbarGutterProbeRef = useRef<HTMLDivElement | null>(null);
+  const [scrollbarGutter, setScrollbarGutter] = useState(0);
+  useLayoutEffect(() => {
+    const probe = scrollbarGutterProbeRef.current;
+    if (!probe) return;
+    const measure = () => {
+      const next = Math.max(0, probe.offsetWidth - probe.clientWidth);
+      setScrollbarGutter((previous) => (previous === next ? previous : next));
+    };
+    measure();
+    const observer = typeof ResizeObserver === "undefined" ? null : new ResizeObserver(measure);
+    observer?.observe(probe);
+    window.addEventListener("resize", measure);
+    return () => {
+      observer?.disconnect();
+      window.removeEventListener("resize", measure);
+    };
+  }, []);
+
   const hasStreamingContent = Boolean(streamState.streamingMessage?.content.length);
   const messageCwd = session?.cwd ?? newSessionCwd ?? undefined;
   const promptAnchorSpacerRef = useRef<HTMLDivElement | null>(null);
@@ -1156,6 +1183,15 @@ export function ChatWindow({ session, searchTarget, onSearchTargetHandled, initi
       onDragLeave={handleDragLeave}
       onDrop={handleDrop}
     >
+      {/* Zero-content twin of the message scrollport: same scrollbar styling and
+          a permanently reserved gutter, so it reports the exact width the real
+          scrollbar takes before any content renders one. */}
+      <div
+        ref={scrollbarGutterProbeRef}
+        aria-hidden="true"
+        className="pointer-events-none absolute left-0 top-0 h-px w-24 overflow-y-auto opacity-0 [scrollbar-gutter:stable]"
+      />
+
       {isDragOver && (
         <div className="pointer-events-none absolute inset-0 z-50 flex animate-[drop-zone-in_0.15s_ease_both] items-center justify-center bg-[var(--accent-soft)] backdrop-blur-[1px]">
           <div className="pointer-events-none absolute inset-0 flex items-center justify-center">
@@ -1555,14 +1591,14 @@ export function ChatWindow({ session, searchTarget, onSearchTargetHandled, initi
         document.body,
       )}
 
-      <div className="relative shrink-0">
+      <div className="relative shrink-0" style={scrollbarGutter > 0 ? { paddingRight: scrollbarGutter } : undefined}>
         {!isEmptyNew && (
           <div
             style={{
               position: "absolute",
               bottom: "100%",
               left: 0,
-              right: isMobile ? 0 : CHAT_MINIMAP_WIDTH,
+              right: isMobile ? 0 : CHAT_MINIMAP_WIDTH + scrollbarGutter,
               display: "flex",
               justifyContent: "center",
               paddingBottom: 10,
@@ -1583,14 +1619,14 @@ export function ChatWindow({ session, searchTarget, onSearchTargetHandled, initi
             </button>
           </div>
         )}
+        {/* New-session header: the fork removed the product icon and name
+            (they sat directly above the composer, adding nothing the window
+            chrome did not already say), so the update chip is the only thing
+            left in this row — and the row collapses to zero height without it. */}
         {isEmptyNew && (
-          <div className="mb-3 w-full" style={{ padding: "0 16px" }}>
-            <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12, maxWidth: "var(--chat-content-max-width, 820px)", margin: "0 auto", fontFamily: "var(--font-mono)" }}>
-              <div style={{ display: "flex", alignItems: "center", gap: isMobile ? 7 : 10, minWidth: 0, flex: 1, lineHeight: 1.4, overflow: "hidden" }}>
-                <Image src="/icons/apple-touch-icon.png" width={32} height={32} alt="" priority style={{ flexShrink: 0 }} />
-                <span style={{ fontSize: 22, color: "var(--text)", fontWeight: 700, flexShrink: 0, whiteSpace: "nowrap" }}>{PRODUCT_NAME}</span>
-                <NewSessionUpdateLink label={(version) => t("appUpdate.releaseNotes", { version })} />
-              </div>
+          <div className="w-full" style={{ padding: "0 16px" }}>
+            <div style={{ display: "flex", alignItems: "center", maxWidth: "var(--chat-content-max-width, 820px)", margin: "0 auto", fontFamily: "var(--font-mono)" }}>
+              <NewSessionUpdateLink label={(version) => t("appUpdate.releaseNotes", { version })} />
             </div>
           </div>
         )}
