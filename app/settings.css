@@ -933,6 +933,12 @@
   opacity: 0.7;
 }
 
+/* Settings is an in-window sheet, not a small centered modal: this is a desktop
+   client, and the dialog hosts the full Models / Agents / Plugins editors, which
+   want the width. A 12px gutter keeps the window's own chrome usable while the
+   sheet is up — macOS keeps its traffic lights over the sidebar header
+   (titleBarStyle: overlay) and Windows/Linux render WindowControls in the topbar,
+   so a 100vw surface would hide them and leave nothing to drag. */
 .settings-dialog-backdrop {
   position: fixed;
   inset: 0;
@@ -940,19 +946,19 @@
   display: flex;
   align-items: center;
   justify-content: center;
-  background: rgba(0, 0, 0, 0.38);
+  background: rgba(0, 0, 0, 0.22);
 }
 
 .settings-dialog-surface {
   display: flex;
   flex-direction: column;
-  width: 1080px;
-  max-width: calc(100vw - 16px);
-  height: 84vh;
-  max-height: calc(100dvh - 16px);
+  width: calc(100vw - 24px);
+  max-width: none;
+  height: calc(100dvh - 24px);
+  max-height: none;
   overflow: hidden;
   border: 1px solid var(--border);
-  border-radius: 8px;
+  border-radius: 10px;
   background: var(--bg);
   box-shadow: 0 16px 48px rgba(0, 0, 0, 0.22);
 }
