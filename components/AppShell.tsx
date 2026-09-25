@@ -259,6 +259,8 @@ export function AppShell() {
   const [modelsRefreshKey, setModelsRefreshKey] = useState(0);
   const [topMoreOpen, setTopMoreOpen] = useState(false);
   const topMoreRef = useRef<HTMLDivElement>(null);
+  const topMoreMenuRef = useRef<HTMLDivElement>(null);
+  const [topMorePos, setTopMorePos] = useState<{ top: number; right: number } | null>(null);
   const [projectTrust, setProjectTrust] = useState<ProjectTrustStatus | null>(null);
   const [projectTrustDialogOpen, setProjectTrustDialogOpen] = useState(false);
   const [projectTrustBusy, setProjectTrustBusy] = useState(false);
@@ -528,11 +530,29 @@ export function AppShell() {
     setRightPanelExpanded((expanded) => !expanded);
   }, []);
 
+  // Position the portaled More menu under its trigger and follow window resizes.
+  useEffect(() => {
+    if (!topMoreOpen) return;
+    const update = () => {
+      const rect = topMoreRef.current?.getBoundingClientRect();
+      if (!rect) return;
+      setTopMorePos({ top: rect.bottom + 7, right: window.innerWidth - rect.right - 2 });
+    };
+    update();
+    window.addEventListener("resize", update);
+    return () => window.removeEventListener("resize", update);
+  }, [topMoreOpen]);
+
   useEffect(() => {
     if (!topMoreOpen) return;
 
     const handlePointerDown = (event: MouseEvent) => {
-      if (!topMoreRef.current?.contains(event.target as Node)) setTopMoreOpen(false);
+      // The menu is portaled to <body> (the open file panel's z-index 100 sits
+      // above the topbar's z-index 90 stacking context and used to cover the
+      // menu), so clicks inside it need this second containment check.
+      const inside = topMoreRef.current?.contains(event.target as Node)
+        || topMoreMenuRef.current?.contains(event.target as Node);
+      if (!inside) setTopMoreOpen(false);
     };
     const handleEscape = (event: KeyboardEvent) => {
       if (event.key === "Escape") setTopMoreOpen(false);
@@ -1971,8 +1991,14 @@ export function AppShell() {
                       </svg>
                       {!isMobile && <span>{translate("appshell.more")}</span>}
                     </button>
-                    {topMoreOpen && (
-                      <div className="native-popover app-topbar-more-menu" role="menu" aria-label={translate("appshell.moreActions")}>
+                    {topMoreOpen && topMorePos && createPortal(
+                      <div
+                        ref={topMoreMenuRef}
+                        className="native-popover app-topbar-more-menu"
+                        role="menu"
+                        aria-label={translate("appshell.moreActions")}
+                        style={{ position: "fixed", top: topMorePos.top, right: topMorePos.right, zIndex: 700 }}
+                      >
                         <button
                           className="app-topbar-more-item"
                           type="button"
@@ -2115,7 +2141,8 @@ export function AppShell() {
                             </button>
                           );
                         })()}
-                      </div>
+                      </div>,
+                      document.body,
                     )}
                   </div>
                 );

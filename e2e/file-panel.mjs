@@ -15,6 +15,9 @@ export async function checkFilePanel(page, filePath) {
   const showPanel = page.viewportSize().width <= 640
     ? page.locator('.right-panel-toggle-button[aria-label="Show file panel"]')
     : page.locator('.app-topbar button[aria-label="Show file panel"]');
+  const hidePanel = page.viewportSize().width <= 640
+    ? page.locator('.right-panel-toggle-button[aria-label="Hide file panel"]')
+    : page.locator('.app-topbar button[aria-label="Hide file panel"]');
   await showPanel.click();
   await panel.waitFor({ state: "visible" });
   await panel.locator(`[role="button"][title="${filePath}"]`).click();
@@ -42,11 +45,20 @@ export async function checkFilePanel(page, filePath) {
     if (await separator.isVisible()) await separator.press("ArrowLeft");
     const originalWidth = await width();
     const originalStored = await storedWidths();
-    const sessionInfo = page.getByRole("button", { name: "Session info", exact: true });
+    // The fork keeps session stats in the topbar's More menu (upstream had a
+    // dedicated "Session info" button); the strip's hide-panel chip is gone
+    // too — the topbar panel toggle owns closing on desktop, the fixed
+    // floating toggle on mobile.
+    const moreTrigger = page.getByRole("button", { name: "More session actions", exact: true });
+    const statsItem = page.locator(".app-topbar-more-menu .app-topbar-more-item").last();
     const sessionPopover = page.locator(".session-info-popover");
-    for (let i = 0; i < 2; i++) {
-      await sessionInfo.click();
+    const openSessionInfo = async () => {
+      await moreTrigger.click();
+      await statsItem.click();
       await sessionPopover.waitFor();
+    };
+    for (let i = 0; i < 2; i++) {
+      await openSessionInfo();
       await toggle.click();
       assert.equal(await sessionPopover.count(), 0, "Full-width mode dismisses inert top-bar menus");
       assert.equal(await panel.getByRole("button", { name: "Restore panel width", exact: true }).getAttribute("aria-pressed"), "true");
@@ -62,12 +74,12 @@ export async function checkFilePanel(page, filePath) {
       assert.equal(await page.locator("#session-sidebar").evaluate(el => el.inert), false);
     }
     await toggle.click();
-    await panel.getByRole("button", { name: "Hide file panel", exact: true }).click();
+    await hidePanel.click();
     await showPanel.click();
     assert.equal(await toggle.getAttribute("aria-pressed"), "false", "Reopening returns to the split layout");
     assert.equal(await width(), originalWidth);
     assert.equal(await frame.evaluate(() => window.previewInstance), instance);
   }
-  await panel.getByRole("button", { name: "Hide file panel", exact: true }).click();
+  await hidePanel.click();
   console.log(`PASS: file panel width and preview state at ${page.viewportSize().width}px`);
 }
