@@ -12,6 +12,30 @@ Lint: `npm run lint`
 
 ---
 
+## Local environment traps
+
+- **Building (or starting a fresh `next dev`) from inside the Pi desktop app's shell
+  fails.** The app exports `NODE_ENV=production`, `__NEXT_PRIVATE_ORIGIN` and
+  `__NEXT_PRIVATE_STANDALONE_CONFIG` (its own serialized Next config, from which function
+  values are gone). Next's CLI prefers that serialized config over `next.config.ts`, so
+  `next build` dies with `TypeError: generate is not a function` and a fresh `next dev`
+  with `Missing field turbopackMemoryEviction` — while a dev server that was already
+  running keeps working, which makes it look like a repo bug. `scripts/prepare-desktop.mjs`
+  deletes both `__NEXT_PRIVATE_*` vars for this exact reason; do the same (or run from a
+  normal terminal) before any `next build` / `npm run test:e2e`.
+- The `node` on `PATH` may not be the one the project runs on: the Pi app bundles its own
+  runtime, while a dev server started from a terminal uses another install. Check with
+  `ps -o command= -p $(lsof -nP -iTCP:30141 -sTCP:LISTEN -t)`.
+- `npm run test:e2e` refuses to start while a dev server holds `.next/dev/lock`, and
+  `E2E_SERVER_MODE=start` (the mode CI uses) needs a production build. Both can be
+  satisfied without touching the dev state by building into the isolated desktop dir and
+  pointing the harness at it:
+  `PI_WEB_DESKTOP_BUILD=1 node_modules/next/dist/bin/next build --webpack` then
+  `E2E_SERVER_MODE=start PI_WEB_DESKTOP_BUILD=1 node e2e/run.mjs` (`next.config.ts` swaps
+  `distDir` to `.next-desktop`, which is gitignored).
+
+---
+
 ## Architecture
 
 ```

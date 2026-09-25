@@ -16,8 +16,12 @@ export async function checkFilePanel(page, filePath) {
     ? page.locator('.right-panel-toggle-button[aria-label="Show file panel"]')
     : page.locator('.app-topbar button[aria-label="Show file panel"]');
   const hidePanel = page.viewportSize().width <= 640
-    ? page.locator('.right-panel-toggle-button[aria-label="Hide file panel"]')
+    ? page.locator('#file-panel [aria-label="Hide file panel"]')
     : page.locator('.app-topbar button[aria-label="Hide file panel"]');
+  // The strip's own chip exists only while the topbar toggle is unreachable
+  // (full-width desktop, and mobile where the floating toggle sits under the
+  // panel), so closing from full width has to use it.
+  const hidePanelInStrip = page.locator('#file-panel [aria-label="Hide file panel"]');
   await showPanel.click();
   await panel.waitFor({ state: "visible" });
   await panel.locator(`[role="button"][title="${filePath}"]`).click();
@@ -74,7 +78,7 @@ export async function checkFilePanel(page, filePath) {
       assert.equal(await page.locator("#session-sidebar").evaluate(el => el.inert), false);
     }
     await toggle.click();
-    await hidePanel.click();
+    await hidePanelInStrip.click();
     await showPanel.click();
     assert.equal(await toggle.getAttribute("aria-pressed"), "false", "Reopening returns to the split layout");
     assert.equal(await width(), originalWidth);
