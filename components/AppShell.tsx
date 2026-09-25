@@ -96,7 +96,6 @@ type AutoNameStatus =
   | { kind: "naming" }
   | { kind: "success" }
   | { kind: "error"; message: string };
-const TOP_BAR_ICON_BUTTON_SIZE = 36;
 const FILE_TREE_DEFAULT_WIDTH = 300;
 const LANGUAGE_MENU_WIDTH = 176;
 const AGENT_PANEL_WIDTH = 420;
@@ -620,14 +619,15 @@ export function AppShell() {
     const update = () => {
       const topBarRect = topBarRef.current!.getBoundingClientRect();
       // The dropdowns are fixed children of the top bar's stacking context
-      // (z-index 90), so the sidebar and the wide-desktop file panel paint
-      // over them. Keep them inside the region those columns don't cover.
-      // Narrower widths render the file panel as an overlay beneath this
-      // dropdown's z-index, so only the split layout is reserved.
-      const sidebarReserved = sidebarOpen && !isMobile ? sidebarResizer.width : 0;
+      // (z-index 90), so the wide-desktop file panel paints over them — keep
+      // them clear of that column. The top bar itself already starts at the
+      // sidebar's right edge (the sidebar is a full-height column of the
+      // shell), so its rect is already the sidebar-cleared region; reserving
+      // the sidebar width again here shifted the dropdown a second time and
+      // left a sidebar-wide dead band on its left.
       const panelReserved = rightPanelOpen && !isMobile && wideSplitLayout ? rightPanelWidth : 0;
-      const left = topBarRect.left + sidebarReserved;
-      const available = Math.max(0, topBarRect.width - sidebarReserved - panelReserved);
+      const left = topBarRect.left;
+      const available = Math.max(0, topBarRect.width - panelReserved);
       if (activeTopPanel === "agents") {
         setTopPanelPos({
           top: topBarRect.bottom,
@@ -642,7 +642,7 @@ export function AppShell() {
     const ro = new ResizeObserver(update);
     ro.observe(topBarRef.current);
     return () => ro.disconnect();
-  }, [activeTopPanel, isMobile, sidebarOpen, sidebarResizer.width, rightPanelOpen, rightPanelWidth, wideSplitLayout]);
+  }, [activeTopPanel, isMobile, rightPanelOpen, rightPanelWidth, wideSplitLayout]);
 
   // Files unmount when inactive; workspace terminals stay mounted until closed.
   const [fileTabs, setFileTabs] = useState<Tab[]>([]);
@@ -1674,11 +1674,8 @@ export function AppShell() {
         aria-label={rightPanelOpen ? translate("files.hidePanel") : translate("files.showPanel")}
         data-mobile-toolbar-file={mobile ? "true" : undefined}
         style={{
-          display: "flex", alignItems: "center", justifyContent: "center",
-          width: TOP_BAR_ICON_BUTTON_SIZE, height: TOP_BAR_ICON_BUTTON_SIZE, padding: 0,
           visibility: covered ? "hidden" : "visible",
           pointerEvents: covered ? "none" : "auto",
-          cursor: "pointer", flexShrink: 0,
         }}
       >
         <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
@@ -1856,15 +1853,9 @@ export function AppShell() {
               onClick={handleSidebarToggle}
               title={translate("sidebar.show")}
               aria-label={translate("sidebar.show")}
-              style={{
-                display: "flex", alignItems: "center", justifyContent: "center",
-                width: TOP_BAR_ICON_BUTTON_SIZE, height: TOP_BAR_ICON_BUTTON_SIZE, padding: 0,
-                background: "none", border: "none", borderRight: "1px solid var(--border)",
-                order: -2,
-                color: "var(--text-muted)", cursor: "pointer", flexShrink: 0, transition: "color 0.12s",
-              }}
-              onMouseEnter={(e) => { e.currentTarget.style.color = "var(--text)"; }}
-              onMouseLeave={(e) => { e.currentTarget.style.color = "var(--text-muted)"; }}
+              // Size, hover colour and background come from .native-icon-button, which
+              // declares them with !important — inline overrides here would be dead.
+              style={{ order: -2, flexShrink: 0 }}
             >
               <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
                 <rect x="3" y="3" width="18" height="18" rx="2" /><line x1="9" y1="3" x2="9" y2="21" />
@@ -1972,7 +1963,6 @@ export function AppShell() {
                 open={activeTopPanel === "branches"}
                 onToggle={() => toggleTopPanel("branches")}
                 hasSession
-                reserveLeft={sidebarOpen && !isMobile ? sidebarResizer.width : 0}
                 reserveRight={rightPanelOpen && !isMobile && wideSplitLayout ? rightPanelWidth : 0}
               />
               {(() => {
@@ -2669,19 +2659,6 @@ export function AppShell() {
               <path d={rightPanelFullWidth
                 ? "M9 3v6H3m12-6v6h6M9 21v-6H3m12 6v-6h6M3 3l6 6m12-6-6 6M3 21l6-6m12 6-6-6"
                 : "M8 3H3v5m13-5h5v5M3 16v5h5m13-5v5h-5M3 3l6 6m12-6-6 6M3 21l6-6m12 6-6-6"} />
-            </svg>
-          </button>
-          <button
-            type="button"
-            className="file-workbench-icon-button"
-            onClick={() => setRightPanelOpen(false)}
-            aria-controls="file-panel"
-            aria-expanded={rightPanelOpen}
-            title={translate("files.hidePanel")}
-            aria-label={translate("files.hidePanel")}
-          >
-            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
-              <rect x="3" y="3" width="18" height="18" rx="2" /><line x1="15" y1="3" x2="15" y2="21" />
             </svg>
           </button>
         </div>
