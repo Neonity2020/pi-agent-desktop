@@ -1,10 +1,10 @@
 {
   "pi": {
-    "version": "0.86.1",
-    "reason": "Synced to pi 0.86.1 via upstream pi-web upgrade and verified by full test suite."
+    "version": "0.87.1",
+    "reason": "Segment F merge (upstream main@96966e5) upgraded the bundled SDK to pi 0.87.1; verified by the full test suite plus the SDK 0.86/0.87 adaptations documented in AGENTS.md."
   },
   "pi-web": {
     "version": "0.10.0",
-    "reason": "Merged upstream pi-web through main@1eb5e66 (segments A-E); fork adaptations documented in AGENTS.md."
+    "reason": "Merged upstream pi-web through main@96966e5 (segments A-F); fork adaptations documented in AGENTS.md."
   }
 }
