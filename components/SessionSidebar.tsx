@@ -10,8 +10,7 @@ import { workspaceKeyOf } from "@/lib/workspace-memory";
 import { useI18n } from "@/hooks/useI18n";
 import { formatRelativeTime } from "@/lib/i18n/format";
 import { createPortal } from "react-dom";
-import { ProjectPicker, selectProjectDirectoryNative } from "./ProjectPicker";
-import { AnimatedDropdown, PathLabel, displayCwd, getRecentProjects } from "./path-ui";
+import { ProjectPicker, selectProjectDirectoryNative } from "./ProjectPicker";import { AnimatedDropdown, PathLabel, displayCwd, getRecentProjects } from "./path-ui";
 import { APP_PREF_KEYS, getPrefJson, removePref, setPrefJson } from "@/lib/app-prefs";
 import { groupByProject } from "@/lib/project-group";
 import { notifyDesktop } from "@/lib/desktop-notify";
@@ -19,6 +18,7 @@ import { revealItemInDirNative } from "@/lib/desktop-native";
 import { isTauriDesktop } from "@/lib/desktop-updater";
 import { getDesktopPlatform, type DesktopPlatform } from "@/lib/desktop-window";
 import { useWindowDrag } from "./desktop";
+import { SessionSearch } from "./SessionSearch";
 import { prefetchSessionData } from "@/lib/session-data-cache";
 
 function sessionListUrl(summary: boolean, force: boolean): string {
@@ -225,6 +225,9 @@ export function SessionSidebar({ selectedSessionId, onSelectSession, onNewSessio
   const windowDrag = useWindowDrag();
   const [wtFilter, setWtFilter] = useState("");
   const [sessionQuery, setSessionQuery] = useState("");
+  // Content search (server-side, across every session) vs. the default title
+  // filter over the loaded project tree. Toggled from the search row.
+  const [contentSearch, setContentSearch] = useState(false);
   // Worktree switcher state
   const [worktreeState, setWorktreeState] = useState<WorktreeState | null>(null);
   const lastNotifiedProjectRef = useRef<{ cwd: string | null; key: string | null } | null>(null);
@@ -1811,6 +1814,19 @@ export function SessionSidebar({ selectedSessionId, onSelectSession, onNewSessio
             </svg>
           </button>
         )}
+        <button
+          type="button"
+          className={`sidebar-search-mode${contentSearch ? " is-active" : ""}`}
+          onClick={() => setContentSearch((open) => !open)}
+          title={t("sidebar.toggleSessionSearch")}
+          aria-label={t("sidebar.toggleSessionSearch")}
+          aria-pressed={contentSearch}
+        >
+          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+            <circle cx="11" cy="11" r="7" />
+            <path d="m20 20-4-4" />
+          </svg>
+        </button>
       </div>
       {/* Project tree (Codex-style) — replaces the old CHATS/FILES tabs. Every
           project is rendered as a flat row whose chats nest directly beneath.
@@ -1843,6 +1859,12 @@ export function SessionSidebar({ selectedSessionId, onSelectSession, onNewSessio
               )}
         </div>
       ) : (
+        <SessionSearch
+          open={contentSearch}
+          query={sessionQuery}
+          selectedSessionId={selectedSessionId}
+          onSelectSession={handleSelectSessionFromList}
+        >
         <div className="sidebar-project-tree" onScroll={handleListScroll}>
           <div className="sidebar-project-tree-header">
             <span className="sidebar-project-tree-title">{t("sidebar.projects")}</span>
@@ -1881,6 +1903,7 @@ export function SessionSidebar({ selectedSessionId, onSelectSession, onNewSessio
           </div>
           {activeProjects.map((group) => renderProjectGroup(group))}
         </div>
+        </SessionSearch>
       )}
       {projectMenu && projectMenuPos && createPortal(
         <div

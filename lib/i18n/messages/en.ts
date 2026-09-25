@@ -247,6 +247,7 @@ export const enLocale: LocalePlugin = {
     "sidebar.searchingFiles": "Searching…",
     "sidebar.noMatchingFiles": "No matching files",
     "sidebar.clearSearch": "Clear search",
+    "sidebar.toggleSessionSearch": "Search conversations",
     "sidebar.searchSessions": "Search all conversations...",
     "sidebar.sessionSearching": "Searching...",
     "sidebar.sessionSearchEmpty": "No matching conversations",

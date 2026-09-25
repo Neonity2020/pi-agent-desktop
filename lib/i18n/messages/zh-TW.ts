@@ -238,6 +238,7 @@ export const zhTWLocale: LocalePlugin = {
     "sidebar.searchingFiles": "搜尋中…",
     "sidebar.noMatchingFiles": "找不到相符的檔案",
     "sidebar.clearSearch": "清除搜尋",
+    "sidebar.toggleSessionSearch": "搜尋對話",
     "sidebar.searchSessions": "搜尋所有對話...",
     "sidebar.sessionSearching": "搜尋中...",
     "sidebar.sessionSearchEmpty": "找不到相符的對話",

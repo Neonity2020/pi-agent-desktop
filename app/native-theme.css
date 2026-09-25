@@ -954,6 +954,7 @@ html.dark .sidebar-view-switcher-thumb {
   display: flex;
   flex: 0 0 auto;
   align-items: center;
+  gap: 4px;
   margin: 0 10px 6px;
 }
 
@@ -965,7 +966,9 @@ html.dark .sidebar-view-switcher-thumb {
 }
 
 .sidebar-search-input {
-  width: 100%;
+  width: auto;
+  min-width: 0;
+  flex: 1 1 auto;
   height: 28px;
   padding: 0 26px 0 26px;
   border: 1px solid var(--separator);
@@ -995,7 +998,8 @@ html.dark .sidebar-view-switcher-thumb {
 
 .sidebar-search-clear {
   position: absolute;
-  right: 4px;
+  /* 4px inset inside the input: the mode toggle owns the 22px to its right. */
+  right: 30px;
   display: flex;
   width: 20px;
   height: 20px;
@@ -1011,6 +1015,33 @@ html.dark .sidebar-view-switcher-thumb {
 
 .sidebar-search-clear:hover {
   background: var(--bg-hover);
+  color: var(--text);
+}
+
+/* Title filter (default) vs. server-side content search across all sessions. */
+.sidebar-search-mode {
+  display: flex;
+  width: 22px;
+  height: 22px;
+  padding: 0;
+  flex: 0 0 22px;
+  align-items: center;
+  justify-content: center;
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--text-dim);
+  cursor: pointer;
+  transition: background 120ms ease, color 120ms ease;
+}
+
+.sidebar-search-mode:hover {
+  background: var(--bg-hover);
+  color: var(--text);
+}
+
+.sidebar-search-mode.is-active {
+  background: var(--bg-selected);
   color: var(--text);
 }
 
