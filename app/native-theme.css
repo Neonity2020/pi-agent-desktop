@@ -998,8 +998,9 @@ html.dark .sidebar-view-switcher-thumb {
 
 .sidebar-search-clear {
   position: absolute;
-  /* 4px inset inside the input: the mode toggle owns the 22px to its right. */
-  right: 30px;
+  /* 4px inset inside the input — now the row's only child, since content
+     search is confirmed with Enter, not a mode toggle beside the field. */
+  right: 4px;
   display: flex;
   width: 20px;
   height: 20px;
@@ -1015,33 +1016,6 @@ html.dark .sidebar-view-switcher-thumb {
 
 .sidebar-search-clear:hover {
   background: var(--bg-hover);
-  color: var(--text);
-}
-
-/* Title filter (default) vs. server-side content search across all sessions. */
-.sidebar-search-mode {
-  display: flex;
-  width: 22px;
-  height: 22px;
-  padding: 0;
-  flex: 0 0 22px;
-  align-items: center;
-  justify-content: center;
-  border: 0;
-  border-radius: 6px;
-  background: transparent;
-  color: var(--text-dim);
-  cursor: pointer;
-  transition: background 120ms ease, color 120ms ease;
-}
-
-.sidebar-search-mode:hover {
-  background: var(--bg-hover);
-  color: var(--text);
-}
-
-.sidebar-search-mode.is-active {
-  background: var(--bg-selected);
   color: var(--text);
 }
 

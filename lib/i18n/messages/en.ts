@@ -243,6 +243,7 @@ export const enLocale: LocalePlugin = {
     "sidebar.clearSearch": "Clear search",
     "sidebar.toggleSessionSearch": "Search conversations",
     "sidebar.searchSessions": "Search all conversations...",
+    "sidebar.searchAllHint": "Press Enter to search inside every conversation",
     "sidebar.sessionSearching": "Searching...",
     "sidebar.sessionSearchEmpty": "No matching conversations",
     "sidebar.sessionSearchCount": "{count} matching conversations",
