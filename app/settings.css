@@ -649,7 +649,7 @@
 
 .skill-version-value,
 .skill-name-value {
-  color: var(--text-muted);
+  color: var(--text);
   font-family: var(--font-mono);
   font-size: 12px;
 }
@@ -657,10 +657,6 @@
 .skill-version-value.is-update,
 .skill-update-indicator {
   color: var(--accent);
-}
-
-.skill-name-value {
-  color: var(--text);
 }
 
 .skill-update-status {
