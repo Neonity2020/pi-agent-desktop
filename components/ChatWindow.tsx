@@ -951,12 +951,15 @@ export function ChatWindow({ session, searchTarget, onSearchTargetHandled, initi
   const isEmptyNew = isNew && !loading && !error && messages.length === 0 && !streamState.isStreaming && !sessionBusy;
   useScrollbarVisibility(scrollContainerRef, Boolean(session?.id) || !isEmptyNew);
 
-  // The message scrollport reserves its scrollbar gutter, so the column centred
-  // inside it sits half a scrollbar left of the composer's, which still centres
-  // on the full width — the two never line up. A hidden twin of the scrollport
-  // reports how wide that gutter is (even before the first message renders a
-  // scrollbar), and the composer reserves the same amount, so both columns
-  // share one axis and keep it as the scrollbar appears or disappears.
+  // The message scrollport always shows its (usually invisible) scrollbar track,
+  // so its width never changes with content. `scrollbar-gutter` would say the
+  // same thing, but WebKit — the macOS desktop shell — does not reliably honour
+  // it, so a short session growing past one screen shifted the column sideways.
+  // The track still takes space on the right, which leaves the centred column
+  // half a scrollbar left of the composer's. A hidden twin of the scrollport
+  // reports how wide the track is (0 for overlay scrollbars) and the scrollport
+  // pads its left edge by the same amount, so the message column, the composer
+  // and the window all share one centre axis.
   const scrollbarGutterProbeRef = useRef<HTMLDivElement | null>(null);
   const [scrollbarGutter, setScrollbarGutter] = useState(0);
   useLayoutEffect(() => {
@@ -1225,12 +1228,12 @@ export function ChatWindow({ session, searchTarget, onSearchTargetHandled, initi
       onDrop={handleDrop}
     >
       {/* Zero-content twin of the message scrollport: same scrollbar styling and
-          a permanently reserved gutter, so it reports the exact width the real
-          scrollbar takes before any content renders one. */}
+          a forced track, so it reports the exact width the real scrollbar takes
+          before any content renders one. */}
       <div
         ref={scrollbarGutterProbeRef}
         aria-hidden="true"
-        className="pointer-events-none absolute left-0 top-0 h-px w-24 overflow-y-auto opacity-0 [scrollbar-gutter:stable]"
+        className="pointer-events-none absolute left-0 top-0 h-px w-24 overflow-y-scroll opacity-0"
       />
 
       {isDragOver && (
@@ -1305,10 +1308,15 @@ export function ChatWindow({ session, searchTarget, onSearchTargetHandled, initi
           ref={scrollContainerRef}
           // The message list is the one place long output has to be dragged through,
           // so it shows its scrollbar instead of hiding it behind the minimap (#788).
-          // A stable gutter keeps the centred column from shifting when a short
-          // session grows past one screen.
-          className="scrollbar-subtle min-w-0 flex-1 overflow-x-hidden overflow-y-auto pt-4 [scrollbar-gutter:stable]"
-          style={{ visibility: pendingScrollRestore && !loading ? "hidden" : undefined }}
+          // The track is always there (its thumb only shows while scrolling), so
+          // the centred column cannot shift when a short session grows past one
+          // screen; the left padding mirrors it to centre the column on the
+          // composer's axis.
+          className="scrollbar-subtle min-w-0 flex-1 overflow-x-hidden overflow-y-scroll pt-4"
+          style={{
+            paddingLeft: scrollbarGutter > 0 ? scrollbarGutter : undefined,
+            visibility: pendingScrollRestore && !loading ? "hidden" : undefined,
+          }}
         >
           <div style={{ minWidth: 0, padding: `0 ${CHAT_COLUMN_PADDING}px` }}>
             <div ref={messageContentRef} onPointerUp={captureQuotedSelection} style={{ width: "100%", minWidth: 0, maxWidth: "var(--chat-content-max-width, 820px)", margin: "0 auto" }}>
@@ -1617,12 +1625,16 @@ export function ChatWindow({ session, searchTarget, onSearchTargetHandled, initi
         document.body,
       )}
 
+      {/* Inset by the scrollbar track on both sides: the message column is
+          inset by it on the left (padding) and right (the track itself), so
+          the composer keeps the same width once the window is narrower than
+          the max column width. */}
       <div
         ref={composerOverlayRef}
         className={isEmptyNew ? "relative shrink-0" : "absolute inset-x-0 z-20"}
         style={{
           ...(isEmptyNew ? {} : { bottom: "env(safe-area-inset-bottom)" }),
-          ...(scrollbarGutter > 0 ? { paddingRight: scrollbarGutter } : {}),
+          ...(scrollbarGutter > 0 ? { paddingInline: scrollbarGutter } : {}),
         }}
       >
         {!isEmptyNew && (
@@ -1631,7 +1643,7 @@ export function ChatWindow({ session, searchTarget, onSearchTargetHandled, initi
               position: "absolute",
               bottom: "100%",
               left: 0,
-              right: isMobile ? 0 : CHAT_MINIMAP_WIDTH + scrollbarGutter,
+              right: isMobile ? 0 : CHAT_MINIMAP_WIDTH,
               display: "flex",
               justifyContent: "center",
               paddingBottom: 10,
