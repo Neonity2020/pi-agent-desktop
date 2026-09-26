@@ -742,6 +742,7 @@ export const zhCNLocale: LocalePlugin = {
     "chat.followUpTitle": "排队，待 Agent 完成后发送（Enter）",
     "chat.modelScopeUnauthenticated": "已配置 {pattern}，但 provider {providers} 没有可用凭据（未登录，或 API key 未解析成功）。",
     "chat.modelScopeConfigure": "去配置",
+    "chat.modelScopeDismiss": "关闭",
     "appshell.untitledTask": "未命名任务",
     "appshell.newTask": "新任务",
     "appshell.subtitle": "本地编码智能体",

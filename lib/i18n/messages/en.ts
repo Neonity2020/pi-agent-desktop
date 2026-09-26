@@ -742,6 +742,7 @@ export const enLocale: LocalePlugin = {
     "chat.followUpTitle": "Queue this message after the agent finishes (Alt/Option+Enter)",
     "chat.modelScopeUnauthenticated": "\"{pattern}\" is configured, but provider {providers} has no usable credentials (not signed in, or its API key failed to resolve).",
     "chat.modelScopeConfigure": "Configure providers",
+    "chat.modelScopeDismiss": "Dismiss",
     "appshell.untitledTask": "Untitled task",
     "appshell.newTask": "New task",
     "appshell.subtitle": "Local coding agent",

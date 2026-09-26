@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useRef, useState, useCallback, useEffect, useLayoutEffect, useImperativeHandle, forwardRef, KeyboardEvent } from "react";
+import React, { useRef, useState, useCallback, useEffect, useLayoutEffect, useMemo, useImperativeHandle, forwardRef, KeyboardEvent } from "react";
 import type { BuiltinSlashCommandResult, CompactResultInfo, QueuedMessages, SlashCommandInfo } from "@/hooks/useAgentSession";
 import type { SkillsResponse } from "@/lib/api-types";
 import type { ModelScopeWarning } from "@/lib/model-scope-warnings";
@@ -203,7 +203,6 @@ interface ModelOption {
   name: string;
 }
 
-const MODEL_FILTER_THRESHOLD = 8;
 const MODEL_OPTION_COLLATOR = new Intl.Collator(undefined, { numeric: true, sensitivity: "base" });
 
 function compareModelOptions(a: ModelOption, b: ModelOption): number {
@@ -571,7 +570,8 @@ function ModelNoticeBanner({ tone, title, body, action, onClose, dismissLabel }:
         <button
           type="button"
           onClick={onClose}
-          aria-label="Dismiss"
+          aria-label={dismissLabel ?? "Dismiss"}
+          title={dismissLabel}
           style={{
             flexShrink: 0,
             background: "none",
@@ -723,10 +723,7 @@ export const ChatInput = forwardRef<ChatInputHandle, Props>(function ChatInput({
   const isCompact = composerTier === "compact" || isNarrow;
   const [value, setValue] = useState(() => (draftKey ? getDraft(draftKey)?.value ?? "" : ""));
   const fileInputRef = useRef<HTMLInputElement>(null);
-  const [modelDropdownOpen, setModelDropdownOpen] = useState(false);
   const [automationDropdownOpen, setAutomationDropdownOpen] = useState(false);
-  const [modelDropdownRect, setModelDropdownRect] = useState<{ top: number; left: number; width: number } | null>(null);
-  const [modelFilter, setModelFilter] = useState("");
   const [toolDropdownOpen, setToolDropdownOpen] = useState(false);
   const [thinkingDropdownOpen, setThinkingDropdownOpen] = useState(false);
   const [controlsMenuOpen, setControlsMenuOpen] = useState(false);
@@ -766,9 +763,7 @@ export const ChatInput = forwardRef<ChatInputHandle, Props>(function ChatInput({
     : {};
 
   const textareaRef = useRef<HTMLTextAreaElement>(null);
-  const dropdownRef = useRef<HTMLDivElement>(null);
   const projectDropdownRef = useRef<HTMLDivElement>(null);
-  const modelDropdownPanelRef = useRef<HTMLDivElement>(null);
   const toolDropdownRef = useRef<HTMLDivElement>(null);
   const thinkingDropdownRef = useRef<HTMLDivElement>(null);
   const automationDropdownRef = useRef<HTMLDivElement>(null);
@@ -1805,32 +1800,19 @@ export const ChatInput = forwardRef<ChatInputHandle, Props>(function ChatInput({
     slashItemRefs.current[slashActiveIndex]?.scrollIntoView({ block: "nearest", inline: "nearest" });
   }, [slashActiveIndex, slashMenuOpen]);
 
-  // Build model options: prefer modelList (has provider info), fallback to modelNames
-  const modelOptions: ModelOption[] = (() => {
+  // Build model options: prefer modelList (has provider info), fallback to modelNames.
+  // Memoized: the composer re-renders on every streaming delta.
+  const fallbackProvider = model?.provider;
+  const modelOptions: ModelOption[] = useMemo(() => {
     if (modelList && modelList.length > 0) {
       return modelList.map((m) => ({ provider: m.provider, modelId: m.id, name: m.name })).sort(compareModelOptions);
     }
     return Object.entries(modelNames ?? {}).map(([modelId, name]) => ({
-      provider: model?.provider ?? "unknown",
+      provider: fallbackProvider ?? "unknown",
       modelId,
       name,
     })).sort(compareModelOptions);
-  })();
-  const filteredModelOptions = filterModelOptions(modelOptions, modelFilter);
-  const showModelFilter = modelOptions.length > MODEL_FILTER_THRESHOLD;
-
-  // Group options by provider, preserving insertion order
-  const modelsByProvider: { provider: string; options: ModelOption[] }[] = [];
-  for (const opt of filteredModelOptions) {
-    const group = modelsByProvider.find((g) => g.provider === opt.provider);
-    if (group) group.options.push(opt);
-    else modelsByProvider.push({ provider: opt.provider, options: [opt] });
-  }
-
-  const displayModelName = model
-    ? (modelOptions.find((o) => o.modelId === model.modelId && o.provider === model.provider)?.name ?? model.modelId)
-    : null;
-  const currentName = displayModelName;
+  }, [modelList, modelNames, fallbackProvider]);
 
   useLayoutEffect(() => {
     if (!slashMenuOpen || slashQuery === null) {
@@ -1940,7 +1922,12 @@ export const ChatInput = forwardRef<ChatInputHandle, Props>(function ChatInput({
       />}
       <div style={{ maxWidth: "var(--chat-content-max-width, 820px)", margin: "0 auto" }}>
         <ModelErrorBanner error={modelError} />
-        <ModelScopeWarningBanner warnings={modelScopeWarnings} />
+        <ModelScopeWarningBanner
+          warnings={modelScopeWarnings}
+          onDismiss={onDismissModelScopeWarnings}
+          dismissLabel={t("chat.modelScopeDismiss")}
+          onOpenModelsConfig={onOpenModelsConfig}
+        />
         {showImageUnsupportedWarning && (() => {
           const entry = modelList?.find((m) => m.provider === model?.provider && m.id === model?.modelId);
           return (

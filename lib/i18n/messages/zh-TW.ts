@@ -745,6 +745,7 @@ export const zhTWLocale: LocalePlugin = {
     "chat.steerTitle": "打斷當前執行並立即插入這條訊息",
     "chat.followUpTitle": "Queue this message to send after the agent finishes (Enter)",
     "chat.modelScopeConfigure": "去配置",
+    "chat.modelScopeDismiss": "關閉",
     "appshell.untitledTask": "未命名任務",
     "appshell.newTask": "新任務",
     "appshell.subtitle": "本地編碼智慧體",

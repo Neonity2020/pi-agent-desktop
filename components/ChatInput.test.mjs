@@ -784,7 +784,7 @@ test("handleSend sends exactly once and routes builtin commands through the pend
     const handler = script.runInNewContext({
       value, attachedImages,
       onAudioUnlock() {},
-      runBuiltinCommand: async (msg) => {
+      runBuiltinCommand: async () => {
         builtinCalls += 1;
         return builtinHandled;
       },

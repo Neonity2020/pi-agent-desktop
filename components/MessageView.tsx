@@ -1218,11 +1218,10 @@ function ApplyPatchDiffView({ files }: { files: SplitDiffFile[] }) {
 }
 
 function SplitPatchView({ text }: { text: string }) {
-  const { t } = useI18n();
   const { mode } = useDiffViewMode();
   const files = useMemo(() => parseUnifiedPatch(text), [text]);
   if (!files) return <PatchTextView text={text} />;
-  return <SplitFilesView files={files} />;
+  return <SplitFilesView files={files} mode={mode} />;
 }
 
 function SplitFilesView({ files, mode = "split" }: { files: SplitDiffFile[]; mode?: "split" | "unified" }) {
