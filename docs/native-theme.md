@@ -1,5 +1,7 @@
 # Native theme — the fork's visual layer
 
+[简体中文](native-theme.zh-CN.md)
+
 This fork restyles pi-web as a native-feeling desktop app. All of that styling lives in
 one fork-owned file, [`app/native-theme.css`](../app/native-theme.css), so that pulling a new
 pi-web release never means re-doing the design. This page covers where each rule goes, what
