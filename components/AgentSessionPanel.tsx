@@ -267,6 +267,7 @@ export function AgentSessionPanel({ rootSession, subagents, selectedSessionId, r
 
   return (
     <div
+      className="agent-session-panel"
       role="listbox"
       aria-label={t("agentSwitcher.title")}
       style={{

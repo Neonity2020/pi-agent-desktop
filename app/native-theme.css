@@ -1698,11 +1698,18 @@ html.dark .sidebar-view-switcher-thumb {
   border-bottom: 1px solid var(--separator);
 }
 
-/* Session / system top panels sit over chat content — keep them fully opaque
+/* The top-bar "More" panels (session stats, system prompt, agents, tools)
+   sit over chat content — keep all four fully opaque and on one surface
    (unlike --bg-panel, which is intentionally translucent for the chrome). */
-.session-info-popover {
+.session-info-popover,
+.system-prompt-panel,
+.tool-definitions-panel,
+.agent-session-panel {
   background: var(--surface-elevated) !important;
   box-shadow: var(--shadow-popover) !important;
+  border-color: var(--separator) !important;
+}
+.session-info-popover {
   border-bottom: 1px solid var(--separator) !important;
 }
 
