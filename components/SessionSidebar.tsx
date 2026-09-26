@@ -1,16 +1,16 @@
 "use client";
 
-import { useEffect, useLayoutEffect, useState, useCallback, useMemo, useRef, type CSSProperties, type ReactNode } from "react";
+import { useEffect, useLayoutEffect, useState, useCallback, useRef, type ReactNode } from "react";
 import type { SessionInfo } from "@/lib/types";
 import { listSessionFamilies } from "@/lib/session-family";
 import { dispatchSessionRowContextMenu } from "@/lib/session-row-context-menu";
 import { skillExpansionToCommand } from "@/lib/slash-display";
-import { getProjectActivity, sessionsForProject } from "@/lib/project-groups";
 import { workspaceKeyOf } from "@/lib/workspace-memory";
 import { useI18n } from "@/hooks/useI18n";
 import { formatRelativeTime } from "@/lib/i18n/format";
 import { createPortal } from "react-dom";
-import { ProjectPicker, selectProjectDirectoryNative } from "./ProjectPicker";import { AnimatedDropdown, PathLabel, displayCwd, getRecentProjects } from "./path-ui";
+import { ProjectPicker, selectProjectDirectoryNative } from "./ProjectPicker";
+import { AnimatedDropdown, PathLabel, displayCwd, getRecentProjects } from "./path-ui";
 import { APP_PREF_KEYS, getPrefJson, removePref, setPrefJson } from "@/lib/app-prefs";
 import { groupByProject } from "@/lib/project-group";
 import { notifyDesktop } from "@/lib/desktop-notify";
@@ -42,12 +42,7 @@ interface Props {
     projectRoot?: string | null,
     projectKey?: string | null,
   ) => void;
-  onOpenFile?: (filePath: string, fileName: string, options?: { sourceSessionId?: string | null; modeHint?: "diff" }) => void;
   onOpenTerminal?: (cwd: string) => void;
-  explorerRefreshKey?: number;
-  onExplorerRefresh?: () => void;
-  onAtMention?: (relativePath: string, isDir: boolean) => void;
-  onAtMentions?: (relativePaths: string[]) => void;
   /** Fired when a session that is not currently selected finishes running.
    *  Lets the app play a cross-workspace completion tone. */
   onBackgroundTaskDone?: () => void;
@@ -90,34 +85,7 @@ interface ProjectSelection {
   key: string;
 }
 
-interface ValidatedProject {
-  cwd: string;
-  root: string;
-  key: string;
-}
-
-const UNREAD_SESSIONS_STORAGE_KEY = "pi-web:unread-session-ids";
-const LAST_CUSTOM_CWD_STORAGE_KEY = "pi-web:last-custom-cwd";
-const RUNNING_SESSIONS_POLL_MS = 2500;
 const SESSION_DETAILS_HYDRATION_DELAY_MS = 750;
-
-function loadLastCustomCwd(): string {
-  if (typeof window === "undefined") return "";
-  try {
-    return window.localStorage.getItem(LAST_CUSTOM_CWD_STORAGE_KEY) ?? "";
-  } catch {
-    return "";
-  }
-}
-
-function saveLastCustomCwd(cwd: string): void {
-  if (typeof window === "undefined") return;
-  try {
-    window.localStorage.setItem(LAST_CUSTOM_CWD_STORAGE_KEY, cwd);
-  } catch {
-    // Persistence is best-effort.
-  }
-}
 
 function loadUnreadSessionIds(): Set<string> {
   if (typeof window === "undefined") return new Set();
@@ -143,19 +111,6 @@ interface SessionTreeNode {
 const MAX_VISIBLE_PROJECT_SESSIONS = 5;
 
 const SESSION_LIST_ITEM_HEIGHT = 54;
-
-/** Virtualized session list: indices of the rows to mount. */
-export function getSessionListIndices(count: number, scrollTop: number, viewportHeight: number, focusedIndex = -1): number[] {
-  const overscan = 8;
-  const visibleCount = Math.ceil((viewportHeight || 600) / SESSION_LIST_ITEM_HEIGHT) + overscan * 2;
-  const start = Math.max(0, Math.min(Math.floor(scrollTop / SESSION_LIST_ITEM_HEIGHT) - overscan, count - visibleCount));
-  const end = Math.min(count, start + visibleCount);
-  const indices = Array.from({ length: end - start }, (_, offset) => start + offset);
-  // Keep a focused row mounted so scrolling cannot discard an inline rename.
-  if (focusedIndex >= 0 && focusedIndex < start) indices.unshift(focusedIndex);
-  if (focusedIndex >= end && focusedIndex < count) indices.push(focusedIndex);
-  return indices;
-}
 
 function treeContainsSession(node: SessionTreeNode, sessionId: string): boolean {
   return node.session.id === sessionId || node.children.some((child) => treeContainsSession(child, sessionId));
@@ -206,7 +161,7 @@ function buildSessionTree(sessions: SessionInfo[]): SessionTreeNode[] {
 }
 
 export function SessionSidebar({ selectedSessionId, onSelectSession, onNewSession, initialSessionId, skipInitialProjectSelection, onInitialRestoreDone, refreshKey, onSessionDeleted, selectedCwd: selectedCwdProp, onCwdChange, onProjectsChange, onBackgroundTaskDone, onRunningSessionIdsChange, onSessionsChange, headerControls, onOpenTerminal }: Props) {
-  const { t, locale } = useI18n();
+  const { t } = useI18n();
   const [allSessions, setAllSessions] = useState<SessionInfo[]>([]);
   // Tracked in a ref only: the version is compared against the polled value to
   // decide whether the list needs reloading, and no render reads it.
@@ -299,45 +254,20 @@ export function SessionSidebar({ selectedSessionId, onSelectSession, onNewSessio
   const sseAuthoritativeRef = useRef(false);
   const detailsHydrationTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  // Virtualized session list: only the visible window of rows is mounted.
+  // Overlay-style scrollbar: `is-scrolling` shows the thumb only while the
+  // project tree is actually scrolling.
   const listScrollHideTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const listScrollRef = useRef<HTMLDivElement>(null);
-  const [listViewportH, setListViewportH] = useState(0);
-  const [listScrollTop, setListScrollTop] = useState(0);
-  const listScrollRafRef = useRef<number | null>(null);
-  const listScrollTopRef = useRef(0);
-  const renderedListScrollTopRef = useRef(0);
   const handleListScroll = useCallback((e: React.UIEvent<HTMLDivElement>) => {
-    // Overlay-style scrollbar: only visible while the list is actually scrolling.
     e.currentTarget.classList.add("is-scrolling");
     if (listScrollHideTimerRef.current) clearTimeout(listScrollHideTimerRef.current);
     listScrollHideTimerRef.current = setTimeout(() => {
-      const el = listScrollRef.current;
-      if (el) el.classList.remove("is-scrolling");
+      listScrollRef.current?.classList.remove("is-scrolling");
       listScrollHideTimerRef.current = null;
     }, 800);
-    listScrollTopRef.current = e.currentTarget.scrollTop;
-    if (listScrollRafRef.current != null) return;
-    listScrollRafRef.current = requestAnimationFrame(() => {
-      listScrollRafRef.current = null;
-      const nextTop = Math.floor(listScrollTopRef.current / SESSION_LIST_ITEM_HEIGHT) * SESSION_LIST_ITEM_HEIGHT;
-      if (renderedListScrollTopRef.current === nextTop) return;
-      renderedListScrollTopRef.current = nextTop;
-      setListScrollTop(nextTop);
-    });
   }, []);
-  useLayoutEffect(() => {
-    const el = listScrollRef.current;
-    if (!el) return;
-    const ro = new ResizeObserver((entries) => {
-      for (const entry of entries) setListViewportH(entry.contentRect.height);
-    });
-    ro.observe(el);
-    setListViewportH(el.clientHeight);
-    listScrollTopRef.current = el.scrollTop;
-    renderedListScrollTopRef.current = Math.floor(el.scrollTop / SESSION_LIST_ITEM_HEIGHT) * SESSION_LIST_ITEM_HEIGHT;
-    setListScrollTop(renderedListScrollTopRef.current);
-    return () => ro.disconnect();
+  useEffect(() => () => {
+    if (listScrollHideTimerRef.current) clearTimeout(listScrollHideTimerRef.current);
   }, []);
 
   const loadSessions = useCallback(async (showLoading = false, force = false, summary = false) => {
@@ -1843,6 +1773,21 @@ export function SessionSidebar({ selectedSessionId, onSelectSession, onNewSessio
         <div className="sidebar-project-tree-empty">
           {loading
             ? t("sidebar.loading")
+            : error
+              ? (
+                // A failed list load must not read as "no projects": that
+                // offers "Add project" as if the user's sessions were gone.
+                <div className="sidebar-empty-action" role="alert">
+                  <span className="sidebar-empty-text" title={error}>{t("sidebar.loadFailed")}</span>
+                  <button
+                    type="button"
+                    className="sidebar-empty-add"
+                    onClick={() => void loadSessions(true, true)}
+                  >
+                    <span>{t("common.retry")}</span>
+                  </button>
+                </div>
+              )
             : trimmedSessionQuery
               ? t("sidebar.noMatchingSessions")
               : (
@@ -1871,7 +1816,7 @@ export function SessionSidebar({ selectedSessionId, onSelectSession, onNewSessio
           selectedSessionId={selectedSessionId}
           onSelectSession={handleSelectSessionFromList}
         >
-        <div className="sidebar-project-tree" onScroll={handleListScroll}>
+        <div ref={listScrollRef} className="sidebar-project-tree" onScroll={handleListScroll}>
           <div className="sidebar-project-tree-header">
             <span className="sidebar-project-tree-title">{t("sidebar.projects")}</span>
             <div className="sidebar-project-tree-tools">

@@ -272,6 +272,7 @@ export const enLocale: LocalePlugin = {
     "sidebar.collapseSubagents": "Collapse subagents",
     "sidebar.messagesCount": "{count} msgs",
     "sidebar.noProjects": "No projects found",
+    "sidebar.loadFailed": "Could not load conversations",
     "sidebar.removeWorktreeTitle": "Remove worktree checkout {path}; the branch is kept",
     "files.modified": "Modified",
     "sidebar.addProject": "Add project",

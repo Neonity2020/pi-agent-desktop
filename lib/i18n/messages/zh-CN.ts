@@ -271,6 +271,7 @@ export const zhCNLocale: LocalePlugin = {
     "sidebar.collapseSubagents": "折叠子智能体",
     "sidebar.messagesCount": "{count} 条消息",
     "sidebar.noProjects": "没有项目",
+    "sidebar.loadFailed": "无法加载对话列表",
     "sidebar.removeWorktreeTitle": "移除 worktree checkout {path}；保留分支",
     "files.modified": "已修改",
     "sidebar.addProject": "添加项目",

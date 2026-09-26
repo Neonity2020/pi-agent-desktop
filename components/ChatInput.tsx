@@ -35,7 +35,7 @@ import type { ContextUsage, SessionStatsInfo } from "@/lib/pi-types";
 import { ContextUsageRing } from "./ContextUsageRing";
 import { useChatAppearance } from "@/hooks/useChatAppearance";
 import type { ToolPreset } from "@/lib/tool-presets";
-import { ModelSelector, type ModelSelectorOption } from "./ModelSelector";
+import { ModelSelector } from "./ModelSelector";
 
 
 export interface AttachedImage {

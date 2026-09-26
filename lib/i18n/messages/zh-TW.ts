@@ -705,6 +705,7 @@ export const zhTWLocale: LocalePlugin = {
     "sidebar.runningCount": "{count} 個執行中",
     "sidebar.unreadCount": "{count} 條未讀",
     "sidebar.noProjects": "沒有專案",
+    "sidebar.loadFailed": "無法載入對話列表",
     "sidebar.addProject": "新增專案",
     "sidebar.moreActions": "專案操作",
     "sidebar.newChat": "新建會話",

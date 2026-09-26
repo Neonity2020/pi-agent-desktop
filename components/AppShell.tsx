@@ -148,7 +148,6 @@ export function AppShell() {
     if (soundEnabledRef.current) playDoneSound();
   }, [playDoneSound, soundEnabledRef]);
   const [selectedSession, setSelectedSession] = useState<SessionInfo | null>(null);
-  const [explorerKey, setExplorerKey] = useState(0);
   const [explorerUploadBusy, setExplorerUploadBusy] = useState(false);
   const fileExplorerRef = useRef<FileExplorerHandle>(null);
   const [fileTreeOpen, setFileTreeOpen] = useState(true);
@@ -206,9 +205,6 @@ export function AppShell() {
     setSearchTarget((current) => current === target ? null : current);
   }, []);
   const [explorerRefreshKey, setExplorerRefreshKey] = useState(0);
-  const handleExplorerRefresh = useCallback(() => {
-    setExplorerRefreshKey((key) => key + 1);
-  }, []);
   const [settingsSection, setSettingsSection] = useState<SettingsSection | null>(null);
   const [settingsMenuOpen, setSettingsMenuOpen] = useState(false);
   const [settingsMenuPos, setSettingsMenuPos] = useState<{ top: number; left: number } | null>(null);
@@ -414,7 +410,6 @@ export function AppShell() {
   const [systemInfoLoading, setSystemInfoLoading] = useState(false);
   const systemInfoLoaderRef = useRef<(() => Promise<void>) | null>(null);
   const systemInfoLoadIdRef = useRef(0);
-  const systemBtnRef = useRef<HTMLButtonElement>(null);
 
   const handleSystemPromptChange = useCallback((prompt: string | null) => {
     setSystemPrompt(prompt);
@@ -1524,12 +1519,7 @@ export function AppShell() {
         onCwdChange={handleCwdChange}
         onProjectsChange={handleProjectsChange}
         headerControls={sidebarHeaderControls}
-        onOpenFile={handleOpenFile}
         onOpenTerminal={handleOpenTerminal}
-        explorerRefreshKey={explorerRefreshKey}
-        onExplorerRefresh={handleExplorerRefresh}
-        onAtMention={handleAtMention}
-        onAtMentions={handleAtMentions}
         onBackgroundTaskDone={handleBackgroundTaskDone}
         onRunningSessionIdsChange={handleRunningSessionIdsChange}
         onSessionsChange={handleSessionsChange}
@@ -2737,14 +2727,9 @@ export function AppShell() {
                   cwd={activeCwd}
                   onOpenFile={handleOpenFile}
                   selectedFilePath={activeFileTab?.filePath ?? null}
-                  refreshKey={explorerKey}
-                  onAtMention={(rel, isDir) => {
-                    chatInputRef.current?.insertText(buildAtMentionText(rel, isDir));
-                  }}
-                  onAtMentions={(rels) => {
-                    const mentions = buildFileAtMentionsText(rels);
-                    if (mentions) chatInputRef.current?.insertText(mentions);
-                  }}
+                  refreshKey={explorerRefreshKey}
+                  onAtMention={handleAtMention}
+                  onAtMentions={handleAtMentions}
                   onUploadBusyChange={setExplorerUploadBusy}
                   changesCollapsed={changesCollapsed}
                   onChangesCountChange={setChangesCount}

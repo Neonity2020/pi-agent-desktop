@@ -87,7 +87,7 @@ test("persists existing profile toggles immediately without submitting unsaved f
 test("reuses the ChatInput model selector with scoped models", () => {
   assert.match(source, /fetch\(`\/api\/models\?cwd=\$\{encodeURIComponent\(cwd\)\}`/);
   assert.match(source, /import \{ ModelSelector \} from "\.\/ModelSelector"/);
-  assert.match(chatInputSource, /import \{ ModelSelector, type ModelSelectorOption \} from "\.\/ModelSelector"/);
+  assert.match(chatInputSource, /import \{ ModelSelector \} from "\.\/ModelSelector"/);
   assert.match(source, /<ModelSelector[\s\S]*?options=\{modelSelectorOptions\}[\s\S]*?variant="field"/);
   assert.match(chatInputSource, /<ModelSelector[\s\S]*?options=\{modelOptions\}/);
   assert.match(modelSelectorSource, /filterModelOptions\(sortedOptions, filter\)/);
