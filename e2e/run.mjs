@@ -356,10 +356,17 @@ try {
         return readingOffset(target);
       };
       await selectSession(text(0), "e4999");
-      const olderPage = page.waitForResponse((response) => response.url().includes(`/api/sessions/${LONG}/context?`));
-      await page.getByText("Scroll up to load earlier messages", { exact: true }).evaluate((element) => element.scrollIntoView({ block: "start", behavior: "instant" }));
-      await olderPage;
-      await page.locator("[data-entry-id='e4850']").waitFor({ state: "attached" });
+      // A prepended page keeps the reader anchored, which scrolls the sentinel
+      // back out of view; reaching e4850 takes one scroll per page. Whether a
+      // second page also chains in on its own is timing-dependent, so loop.
+      const pagedMessage = page.locator("[data-entry-id='e4850']");
+      for (let turn = 0; turn < 4 && await pagedMessage.count() === 0; turn++) {
+        const olderPage = page.waitForResponse((response) => response.url().includes(`/api/sessions/${LONG}/context?`));
+        await page.getByText("Scroll up to load earlier messages", { exact: true }).evaluate((element) => element.scrollIntoView({ block: "start", behavior: "instant" }));
+        await olderPage;
+        await page.evaluate(() => new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve))));
+      }
+      await pagedMessage.waitFor({ state: "attached" });
       const olderMessage = page.locator("[data-entry-id='e4920']");
       await olderMessage.waitFor({ state: "visible" });
       await page.evaluate(() => new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve))));

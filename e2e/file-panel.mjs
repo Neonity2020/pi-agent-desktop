@@ -1,6 +1,9 @@
 import assert from "node:assert/strict";
 
-export const filePanelFixture = `<!doctype html><html><body style="margin:20px;min-height:2400px">
+// overflow-anchor:none keeps the scrollY assertion about state preservation:
+// with anchoring on, the text reflowing from a narrow split (~200px on Linux
+// fonts) to full width legitimately shifts scrollY (120 → 83 in CI).
+export const filePanelFixture = `<!doctype html><html><body style="margin:20px;min-height:2400px;overflow-anchor:none">
 <label>Notes <input id="notes"></label>
 <label>Filter <select id="filter"><option>All</option><option>Pending</option></select></label>
 <p>HTML preview state must survive layout changes.</p>
