@@ -17,10 +17,6 @@ import { TabBar, type Tab } from "./TabBar";
 // syntax highlighting a second time and only matters once a file tab opens.
 const FileViewer = dynamic(() => import("./FileViewer").then((m) => m.FileViewer), { ssr: false });
 const FileExplorer = dynamic(() => import("./FileExplorer").then((m) => m.FileExplorer), { ssr: false });
-const ModelsConfig = dynamic(() => import("./ModelsConfig").then((m) => m.ModelsConfig), { ssr: false });
-const SkillsConfig = dynamic(() => import("./SkillsConfig").then((m) => m.SkillsConfig), { ssr: false });
-const PluginsConfig = dynamic(() => import("./PluginsConfig").then((m) => m.PluginsConfig), { ssr: false });
-import { SessionStatsPanel } from "./SessionStatsPanel";
 import { ProjectTrustDialog } from "./ProjectTrustDialog";
 import { BranchNavigator, hasSessionBranches } from "./BranchNavigator";
 import { UpdateReminder } from "./UpdateReminder";
@@ -98,7 +94,6 @@ type AutoNameStatus =
   | { kind: "success" }
   | { kind: "error"; message: string };
 const FILE_TREE_DEFAULT_WIDTH = 300;
-const LANGUAGE_MENU_WIDTH = 176;
 const AGENT_PANEL_WIDTH = 420;
 const FILE_TREE_MIN_WIDTH = 220;
 const FILE_TREE_MAX_WIDTH = 520;
@@ -123,7 +118,7 @@ export function AppShell() {
   // into the desktop config while the settings dialog is closed. The sidebar's
   // sun/moon toggle was removed — theme selection lives in Settings → General.
   useTheme();
-  const { locale, setLocale, t: translate, supportedLocales } = useI18n();
+  const { locale, t: translate } = useI18n();
   const isMobile = useIsMobile();
   useViewportHeight();
 

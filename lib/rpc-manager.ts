@@ -1969,7 +1969,6 @@ export async function destroyRpcSessionsForCwd(cwd: string): Promise<number> {
 }
 
 declare global {
-  // eslint-disable-next-line no-var
   var __piRunningListeners: Set<(ids: string[]) => void> | undefined;
 }
 
