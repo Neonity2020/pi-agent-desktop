@@ -185,7 +185,9 @@ function withAssistantBlocks(
 interface FinalSplitEntry {
   processBlocks: AssistantContentBlock[];
   answerBlocks: AssistantContentBlock[];
-  processMessage: AssistantMessage | null;
+  /** The final assistant entry's process prefix, as rendered inside ProcessDetailsGroup. */
+  processMessage: AssistantMessage;
+  /** The final answer bubble; also kept for error/truncation notices without answer text. */
   answerMessage: AssistantMessage | null;
 }
 
@@ -196,23 +198,53 @@ interface FinalSplitEntry {
 // streaming delta.
 const finalSplitCache = new WeakMap<AssistantMessage, FinalSplitEntry>();
 
-function getFinalSplit(message: AssistantMessage): FinalSplitEntry {
+export function getFinalSplit(message: AssistantMessage): FinalSplitEntry {
   let cached = finalSplitCache.get(message);
   if (!cached) {
     const { processBlocks, answerBlocks } = splitFinalAssistantBlocks(message);
+    const answerMessage = answerBlocks.length > 0 || getAssistantErrorMessage(message) || isAssistantTruncated(message)
+      ? withAssistantBlocks(message, answerBlocks)
+      : null;
+    const processEnd = message.content.indexOf(answerBlocks[0]);
     cached = {
       processBlocks,
       answerBlocks,
-      processMessage: processBlocks.length > 0
-        ? withAssistantBlocks(message, processBlocks, { omitUsage: true })
-        : null,
-      answerMessage: answerBlocks.length > 0
-        ? withAssistantBlocks(message, answerBlocks)
-        : null,
+      // Keep the original prefix so deferred thinking retains its stored block indices.
+      processMessage: withAssistantBlocks(message, message.content.slice(0, processEnd < 0 ? undefined : processEnd), { omitUsage: Boolean(answerMessage) }),
+      answerMessage,
     };
     finalSplitCache.set(message, cached);
   }
   return cached;
+}
+
+interface TurnWrittenFilesEntry {
+  turnMessages: AgentMessage[];
+  toolResults: Map<string, ToolResultMessage>;
+  cwd: string | undefined;
+  files: WrittenFile[];
+}
+
+// Keyed by the turn's final assistant message; reused while the turn's
+// messages, tool results and cwd are unchanged, and while the derived list is
+// equal, so MessageView's writtenFiles identity check holds across renders.
+const turnWrittenFilesCache = new WeakMap<AssistantMessage, TurnWrittenFilesEntry>();
+
+export function getTurnWrittenFiles(finalAssistant: AssistantMessage, turnMessages: AgentMessage[], toolResults: Map<string, ToolResultMessage>, cwd: string | undefined): WrittenFile[] {
+  const cached = turnWrittenFilesCache.get(finalAssistant);
+  if (cached && cached.toolResults === toolResults && cached.cwd === cwd
+    && cached.turnMessages.length === turnMessages.length
+    && cached.turnMessages.every((message, i) => message === turnMessages[i])) {
+    return cached.files;
+  }
+  const turnContent: AssistantContentBlock[] = [];
+  for (const message of turnMessages) {
+    if (message.role === "assistant") turnContent.push(...((message as AssistantMessage).content ?? []));
+  }
+  let files = extractTurnWrittenFiles(turnContent, toolResults, cwd);
+  if (cached && JSON.stringify(cached.files) === JSON.stringify(files)) files = cached.files;
+  turnWrittenFilesCache.set(finalAssistant, { turnMessages, toolResults, cwd, files });
+  return files;
 }
 
 function ProcessDetailsGroup({ messageCount, toolCallCount, defaultExpanded = false, reveal = false, children, t }: { messageCount: number; toolCallCount: number; defaultExpanded?: boolean; reveal?: boolean; children: ReactNode; t: (key: string, params?: Record<string, string | number>) => string }) {
@@ -1384,14 +1416,7 @@ export function ChatWindow({ session, searchTarget, onSearchTargetHandled, initi
                 rendered.push(renderMessage(userIdx));
 
                 const finalAssistant = messages[finalAssistantIdx] as AssistantMessage;
-                const finalSplit = splitFinalAssistantBlocks(finalAssistant);
-                const finalAnswerMessage = finalSplit.answerBlocks.length > 0 || getAssistantErrorMessage(finalAssistant) || isAssistantTruncated(finalAssistant)
-                  ? withAssistantBlocks(finalAssistant, finalSplit.answerBlocks)
-                  : null;
-
-                const finalProcessEnd = finalAssistant.content.indexOf(finalSplit.answerBlocks[0]);
-                // Keep the original prefix so deferred thinking retains its stored block indices.
-                const finalProcessBlocks = finalAssistant.content.slice(0, finalProcessEnd < 0 ? undefined : finalProcessEnd);
+                const { answerMessage: finalAnswerMessage, processMessage: finalProcessMessage } = getFinalSplit(finalAssistant);
 
                 const processViews: ReactNode[] = [];
                 let processToolCount = 0;
@@ -1406,9 +1431,7 @@ export function ChatWindow({ session, searchTarget, onSearchTargetHandled, initi
                     continue;
                   }
                   if (processMessage.role !== "assistant") continue;
-                  const message = processIdx === finalAssistantIdx
-                    ? withAssistantBlocks(processMessage, finalProcessBlocks, { omitUsage: Boolean(finalAnswerMessage) })
-                    : processMessage;
+                  const message = processIdx === finalAssistantIdx ? finalProcessMessage : processMessage;
                   const blocks = getDisplayableAssistantBlocks(message);
                   if (blocks.length === 0) continue;
                   processRefIdx ??= visibleRefIndexByMessage.get(processIdx);
@@ -1440,14 +1463,7 @@ export function ChatWindow({ session, searchTarget, onSearchTargetHandled, initi
                   // final answer alone carries no record of what the turn wrote.
                   // Gather the turn's assistant blocks and derive the file list
                   // from the write/edit calls among them.
-                  const turnContent: AssistantContentBlock[] = [];
-                  for (let i = userIdx + 1; i <= finalAssistantIdx; i++) {
-                    const m = messages[i];
-                    if (m?.role === "assistant") {
-                      for (const b of (m as AssistantMessage).content ?? []) turnContent.push(b);
-                    }
-                  }
-                  const writtenFiles = extractTurnWrittenFiles(turnContent, toolResultsMap, messageCwd);
+                  const writtenFiles = getTurnWrittenFiles(finalAssistant, messages.slice(userIdx + 1, finalAssistantIdx + 1), toolResultsMap, messageCwd);
                   rendered.push(renderMessage(finalAssistantIdx, {
                     messageOverride: finalAnswerMessage,
                     writtenFiles,

@@ -185,3 +185,8 @@ test("uses a generic preview label when a markdown image has no alt text", () =>
   assert.match(html, /<button[^>]+aria-label="Preview image"[^>]*>/);
   assert.doesNotMatch(html, /Preview image:/);
 });
+
+test("a streaming body renders its text on the first paint", () => {
+  const html = renderMarkdown("**Live** answer", { isStreaming: true });
+  assert.match(html, /<strong>Live<\/strong> answer/);
+});
