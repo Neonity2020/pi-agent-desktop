@@ -799,8 +799,37 @@ export function sliceActiveBranch(
     if (visible >= tail || chain.length >= rawCap) break;
     current = current.parentId ? byId.get(current.parentId) : undefined;
   }
+  // A window that stops mid-turn renders that turn's leading messages flat —
+  // ChatWindow can only fold a turn into "Process details" from its anchor —
+  // until the older page arrives and they collapse. Walk back to the anchor
+  // so the page opens on whole turns; a turn too long to reach is left cut.
+  if (current && !startsTurn(current)) {
+    const extension: SessionEntry[] = [];
+    let cursor = current.parentId ? byId.get(current.parentId) : undefined;
+    while (cursor && extension.length < MAX_TURN_EXTENSION_ENTRIES) {
+      extension.push(cursor);
+      if (startsTurn(cursor)) {
+        chain.push(...extension);
+        break;
+      }
+      cursor = cursor.parentId ? byId.get(cursor.parentId) : undefined;
+    }
+  }
   chain.reverse();
   return chain;
+}
+
+/** Extra raw entries a page may take to reach the start of the turn it cut into. */
+const MAX_TURN_EXTENSION_ENTRIES = 1500;
+
+/** Entries that `isMessageGroupAnchor()` treats as the start of a displayed turn. */
+function startsTurn(entry: SessionEntry): boolean {
+  if (entry.type === "compaction") return true;
+  if (entry.type === "custom_message") {
+    return (entry as { customType?: string }).customType === "pi-web:subagent-notification";
+  }
+  if (entry.type === "branch_summary") return Boolean((entry as { summary?: string }).summary);
+  return entry.type === "message" && (entry as { message?: { role?: string } }).message?.role === "user";
 }
 function parseEntryTimestamp(timestamp: string): number | undefined {
   const parsed = Date.parse(timestamp);

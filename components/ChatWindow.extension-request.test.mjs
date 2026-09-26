@@ -10,12 +10,15 @@ test("confines extension overlays to the content region above the composer", () 
   assert.doesNotMatch(source, /function ExtensionRequestSheet/);
   assert.match(
     source,
-    /className="relative flex min-h-0 min-w-0 flex-1 overflow-hidden"[\s\S]*?<ExtensionDialog[\s\S]*?<ExtensionCustomPanel[\s\S]*?className="relative shrink-0"[\s\S]*?{chatInputElement}/,
+    /ref={chatContentRegionRef} className="relative flex min-h-0 min-w-0 flex-1 overflow-hidden"[\s\S]*?<ExtensionDialog[\s\S]*?<ExtensionCustomPanel[\s\S]*?ref={composerOverlayRef}[\s\S]*?{chatInputElement}/,
   );
   assert.match(dialogSource, /position: "absolute"[\s\S]*?inset: 0/);
   assert.match(dialogSource, /pointerEvents: "none"/);
   assert.match(dialogSource, /pointerEvents: "auto"/);
   assert.match(customSource, /position: "absolute"[\s\S]*?inset: 0/);
+  // The composer floats over the content region; overlays stop at its top edge.
+  assert.match(dialogSource, /bottom: "var\(--chat-composer-inset, 0px\)"/);
+  assert.match(customSource, /bottom: "var\(--chat-composer-inset, 0px\)"/);
   assert.match(customSource, /pointerEvents: "none"/);
   assert.doesNotMatch(source, /z-\[100\]|zIndex: 100/);
   assert.match(customSource, /maxHeight: "min\(760px, 100%\)"/);

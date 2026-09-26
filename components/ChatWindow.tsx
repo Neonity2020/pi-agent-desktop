@@ -976,6 +976,44 @@ export function ChatWindow({ session, searchTarget, onSearchTargetHandled, initi
     };
   }, []);
 
+  // The bottom composer floats over the scrollport, so the text beside and
+  // under its rounded box stays visible instead of being cut at a row edge.
+  // The list ends with a spacer of the composer's live height so the last
+  // lines can still scroll clear of it, and extension overlays stop above it
+  // through --chat-composer-inset. Both are written straight to the DOM from
+  // the ResizeObserver: upstream dropped an earlier state-driven spacer
+  // because the extra render made streaming scroll-follow jitter.
+  const composerOverlayRef = useRef<HTMLDivElement | null>(null);
+  const composerOverlaySpacerRef = useRef<HTMLDivElement | null>(null);
+  const chatContentRegionRef = useRef<HTMLDivElement | null>(null);
+  useLayoutEffect(() => {
+    const composer = composerOverlayRef.current;
+    const spacer = composerOverlaySpacerRef.current;
+    const region = chatContentRegionRef.current;
+    const container = scrollContainerRef.current;
+    if (isEmptyNew || !composer || !spacer || !region || !container) return;
+    let applied = -1;
+    const apply = () => {
+      const next = Math.ceil(composer.getBoundingClientRect().height);
+      if (next === applied) return;
+      // A viewport following the tail keeps following it as the composer
+      // grows or shrinks; one scrolled into history keeps its scrollTop, and
+      // the spacer sits below everything, so its content does not move.
+      const atBottom = container.scrollHeight - container.scrollTop - container.clientHeight <= 2;
+      applied = next;
+      spacer.style.height = `${next}px`;
+      region.style.setProperty("--chat-composer-inset", `${next}px`);
+      if (atBottom) container.scrollTop = container.scrollHeight;
+    };
+    apply();
+    const observer = typeof ResizeObserver === "undefined" ? null : new ResizeObserver(apply);
+    observer?.observe(composer);
+    return () => {
+      observer?.disconnect();
+      region.style.removeProperty("--chat-composer-inset");
+    };
+  }, [isEmptyNew, scrollContainerRef]);
+
   const hasStreamingContent = Boolean(streamState.streamingMessage?.content.length);
   const messageCwd = session?.cwd ?? newSessionCwd ?? undefined;
   const promptAnchorSpacerRef = useRef<HTMLDivElement | null>(null);
@@ -1255,7 +1293,7 @@ export function ChatWindow({ session, searchTarget, onSearchTargetHandled, initi
       </div>
 
       {/* Composer overlays the scrollport; trailing spacer clears the last lines. */}
-      <div className="relative flex min-h-0 min-w-0 flex-1 overflow-hidden">
+      <div ref={chatContentRegionRef} className="relative flex min-h-0 min-w-0 flex-1 overflow-hidden">
         {extensionDialog && (
           <ExtensionDialog key={extensionDialog.id} request={extensionDialog} onRespond={respondToExtensionUi} />
         )}
@@ -1487,6 +1525,7 @@ export function ChatWindow({ session, searchTarget, onSearchTargetHandled, initi
             )}
 
             <div ref={promptAnchorSpacerRef} aria-hidden="true" />
+            <div ref={composerOverlaySpacerRef} aria-hidden="true" />
             </div>
           </div>
         </div>
@@ -1578,7 +1617,14 @@ export function ChatWindow({ session, searchTarget, onSearchTargetHandled, initi
         document.body,
       )}
 
-      <div className="relative shrink-0" style={scrollbarGutter > 0 ? { paddingRight: scrollbarGutter } : undefined}>
+      <div
+        ref={composerOverlayRef}
+        className={isEmptyNew ? "relative shrink-0" : "absolute inset-x-0 z-20"}
+        style={{
+          ...(isEmptyNew ? {} : { bottom: "env(safe-area-inset-bottom)" }),
+          ...(scrollbarGutter > 0 ? { paddingRight: scrollbarGutter } : {}),
+        }}
+      >
         {!isEmptyNew && (
           <div
             style={{
@@ -1794,6 +1840,7 @@ function ExtensionDialog({
       style={{
         position: "absolute",
         inset: 0,
+        bottom: "var(--chat-composer-inset, 0px)",
         zIndex: 90,
         display: "flex",
         alignItems: collapsed ? "flex-start" : "center",
@@ -2078,6 +2125,7 @@ function ExtensionCustomPanel({
       style={{
         position: "absolute",
         inset: 0,
+        bottom: "var(--chat-composer-inset, 0px)",
         zIndex: 95,
         display: "flex",
         alignItems: collapsed ? "flex-start" : "center",
