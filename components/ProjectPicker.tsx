@@ -5,6 +5,7 @@ import { DirectoryPicker } from "./DirectoryPicker";
 import { AnimatedDropdown, PathLabel, displayCwd } from "./path-ui";
 import { isTauriDesktop } from "@/lib/desktop-updater";
 import { selectDirectoryNative } from "@/lib/desktop-window";
+import { isImeComposing } from "@/lib/ime";
 
 interface ProjectPickerProps {
   recentProjects: string[];
@@ -285,7 +286,7 @@ export function ProjectPicker({ recentProjects, selectedCwd, selectedProject, ho
               value={projectFilter}
               onChange={(e) => setProjectFilter(e.target.value)}
               onKeyDown={(e) => {
-                if (e.key === "Escape") {
+                if (e.key === "Escape" && !isImeComposing(e)) {
                   e.stopPropagation();
                   if (projectFilter) setProjectFilter("");
                   else closeDropdown();

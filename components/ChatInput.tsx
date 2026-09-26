@@ -1574,7 +1574,7 @@ export const ChatInput = forwardRef<ChatInputHandle, Props>(function ChatInput({
         }
       }
 
-      if (slashMenuOpen && slashQuery !== null) {
+      if (slashMenuOpen && slashQuery !== null && !isComposing) {
         if (e.key === "ArrowDown") {
           e.preventDefault();
           setSlashActiveIndex(getNextSlashIndex("down"));

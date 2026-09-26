@@ -89,6 +89,7 @@ import type { FileViewerState } from "@/lib/file-viewer-state";
 import type { ToolEntry } from "@/lib/tool-presets";
 import { getSessionFamily } from "@/lib/session-family";
 import { type SettingsSection } from "@/lib/settings-navigation";
+import { isImeComposing } from "@/lib/ime";
 
 type SessionCopyField = "file" | "id" | "projectDir" | "gitBranch" | "gitWorktree";
 type AutoNameStatus =
@@ -250,7 +251,7 @@ export function AppShell() {
       closeSettingsMenu();
     };
     const handleKeyDown = (event: KeyboardEvent) => {
-      if (event.key === "Escape" && !event.defaultPrevented) closeSettingsMenu();
+      if (event.key === "Escape" && !event.defaultPrevented && !isImeComposing(event)) closeSettingsMenu();
     };
     document.addEventListener("mousedown", handleMouseDown);
     document.addEventListener("keydown", handleKeyDown);
@@ -558,7 +559,7 @@ export function AppShell() {
       if (!inside) setTopMoreOpen(false);
     };
     const handleEscape = (event: KeyboardEvent) => {
-      if (event.key === "Escape") setTopMoreOpen(false);
+      if (event.key === "Escape" && !isImeComposing(event)) setTopMoreOpen(false);
     };
 
     document.addEventListener("mousedown", handlePointerDown);
@@ -582,7 +583,7 @@ export function AppShell() {
       if (!topBarRef.current?.contains(event.target as Node)) setActiveTopPanel(null);
     };
     const handleEscape = (event: KeyboardEvent) => {
-      if (event.key === "Escape") setActiveTopPanel(null);
+      if (event.key === "Escape" && !isImeComposing(event)) setActiveTopPanel(null);
     };
 
     document.addEventListener("mousedown", handlePointerDown);

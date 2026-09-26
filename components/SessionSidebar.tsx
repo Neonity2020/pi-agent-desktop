@@ -20,6 +20,7 @@ import { getDesktopPlatform, type DesktopPlatform } from "@/lib/desktop-window";
 import { useWindowDrag } from "./desktop";
 import { SessionSearch } from "./SessionSearch";
 import { prefetchSessionData } from "@/lib/session-data-cache";
+import { isImeComposing } from "@/lib/ime";
 
 function sessionListUrl(summary: boolean, force: boolean): string {
   if (summary) return "/api/sessions?summary=1";
@@ -1379,7 +1380,7 @@ export function SessionSidebar({ selectedSessionId, onSelectSession, onNewSessio
                         value={wtFilter}
                         onChange={(e) => setWtFilter(e.target.value)}
                         onKeyDown={(e) => {
-                          if (e.key === "Escape") {
+                          if (e.key === "Escape" && !isImeComposing(e)) {
                             setWtFilter("");
                             setWtDropdownOpen(false);
                           }
@@ -1652,6 +1653,7 @@ export function SessionSidebar({ selectedSessionId, onSelectSession, onNewSessio
                           setWtError(null);
                         }}
                         onKeyDown={(e) => {
+                          if (isImeComposing(e)) return;
                           if (e.key === "Enter") {
                             e.preventDefault();
                             void handleCreateWorktree();
@@ -1797,12 +1799,12 @@ export function SessionSidebar({ selectedSessionId, onSelectSession, onNewSessio
           onKeyDown={(e) => {
             if (e.key === "Enter") {
               // Committing an IME candidate must not fire the search.
-              if (e.nativeEvent.isComposing || !sessionQuery.trim()) return;
+              if (isImeComposing(e) || !sessionQuery.trim()) return;
               e.preventDefault();
               setContentSearch(true);
               return;
             }
-            if (e.key === "Escape") {
+            if (e.key === "Escape" && !isImeComposing(e)) {
               e.stopPropagation();
               // Content results first, then the query, then the field itself.
               if (contentSearch) setContentSearch(false);
@@ -2339,7 +2341,7 @@ function SessionItem({
       if (menuButtonRef.current?.contains(target)) return;
       setMenuOpen(false);
     };
-    const onKeyDown = (ev: KeyboardEvent) => { if (ev.key === "Escape") setMenuOpen(false); };
+    const onKeyDown = (ev: KeyboardEvent) => { if (ev.key === "Escape" && !isImeComposing(ev)) setMenuOpen(false); };
     const onScrollOrResize = () => setMenuOpen(false);
     document.addEventListener("mousedown", onPointerDown);
     document.addEventListener("keydown", onKeyDown);
@@ -2460,6 +2462,7 @@ function SessionItem({
           onChange={(e) => setRenameValue(e.target.value)}
           onBlur={commitRename}
           onKeyDown={(e) => {
+            if (isImeComposing(e)) return;
             if (e.key === "Enter") commitRename();
             if (e.key === "Escape") setRenaming(false);
           }}
