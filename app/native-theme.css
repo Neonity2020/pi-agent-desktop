@@ -527,15 +527,10 @@ html.dark .conversation-navigator-preview {
 }
 
 
-.file-action-menu-icon > svg {
-  display: block;
-  flex: 0 0 auto;
-}
 
 
 
-.file-add-menu button:hover:not(:disabled),
-.file-actions-menu button:hover:not(:disabled) {
+.file-add-menu button:hover:not(:disabled) {
   background: var(--bg-hover) !important;
 }
 
@@ -3010,12 +3005,6 @@ html.dark .sidebar-view-switcher-thumb {
     z-index: 100;
   }
 }
-.file-actions-menu-anchor {
-  position: relative;
-  display: flex;
-  align-items: center;
-  flex: 0 0 auto;
-}
 
 .file-add-menu-anchor {
   display: contents;
@@ -3033,14 +3022,6 @@ html.dark .sidebar-view-switcher-thumb {
 }
 
 
-.file-actions-menu {
-  position: absolute;
-  z-index: 700;
-  width: 230px;
-  padding: 5px;
-  top: calc(100% + 7px);
-  right: -4px;
-}
 
 
 .file-add-menu button {
@@ -3060,25 +3041,8 @@ html.dark .sidebar-view-switcher-thumb {
   text-align: left;
 }
 
-.file-actions-menu button {
-  border-radius: 8px !important;
-  display: flex;
-  width: 100%;
-  min-height: 42px;
-  padding: 7px 9px;
-  align-items: center;
-  gap: 10px;
-  border: 0;
-  background: transparent;
-  color: var(--text);
-  cursor: pointer;
-  font: inherit;
-  font-size: 12px;
-  text-align: left;
-}
 
-.file-add-menu button:disabled,
-.file-actions-menu button:disabled {
+.file-add-menu button:disabled {
   color: var(--text-dim);
   cursor: not-allowed;
   opacity: 0.55;
@@ -3098,18 +3062,6 @@ html.dark .sidebar-view-switcher-thumb {
   font-size: 17px;
 }
 
-.file-action-menu-icon {
-  flex-basis: 26px;
-  display: inline-flex;
-  width: 24px;
-  height: 24px;
-  align-items: center;
-  justify-content: center;
-  flex: 0 0 24px;
-  color: var(--text-muted);
-  font-family: var(--font-mono);
-  font-size: 17px;
-}
 
 
 

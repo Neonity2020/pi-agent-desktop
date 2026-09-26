@@ -35,15 +35,3 @@ test("patch diffs in chat follow the diff display setting", async () => {
   assert.match(splitPatch, /const \{ mode \} = useDiffViewMode\(\);/);
   assert.match(splitPatch, /<SplitFilesView files=\{files\} mode=\{mode\} \/>/);
 });
-
-test("the file panel's actions menu copies the active file's path and contents", async () => {
-  const appShell = await read("./AppShell.tsx");
-  const strip = appShell.slice(appShell.indexOf('<div className="right-panel-tab-strip">'));
-  assert.match(strip, /className="file-actions-menu-anchor" ref=\{fileActionsMenuRef\}/);
-  assert.match(strip, /\["path", "contextPanel\.copyPath", copyActiveFilePath\]/);
-  assert.match(strip, /\["contents", "contextPanel\.copyContents", copyActiveFileContent\]/);
-  // copyText() covers the Tauri clipboard; navigator.clipboard alone does not.
-  const copyFns = appShell.slice(appShell.indexOf("const copyActiveFilePath"), appShell.indexOf("const activeCwdName"));
-  assert.doesNotMatch(copyFns, /navigator\.clipboard/);
-  assert.equal((copyFns.match(/await copyText\(/g) ?? []).length, 2);
-});
