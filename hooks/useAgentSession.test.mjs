@@ -649,10 +649,14 @@ test("keeps prompt anchor measurement outside the React update cycle", () => {
   assert.match(chatWindowSource, /<div ref=\{messageContentRef\}[^>]*style=\{\{/);
 });
 
-test("uses the prompt anchor as the only trailing message spacer", () => {
-  assert.match(chatWindowSource, /<div ref=\{promptAnchorSpacerRef\} aria-hidden="true" \/>[\s\S]*?<\/div>/);
+test("sizes the floating-composer spacer without a React render", () => {
+  assert.match(chatWindowSource, /<div ref=\{promptAnchorSpacerRef\} aria-hidden="true" \/>\s*<div ref=\{composerOverlaySpacerRef\} aria-hidden="true" \/>/);
+  // Upstream's state-driven spacer (bottomComposerHeight) made streaming
+  // scroll-follow jitter; the overlay spacer is written from the observer.
   assert.doesNotMatch(chatWindowSource, /bottomComposer(?:Ref|Height|ScrollFrameRef)/);
-  assert.doesNotMatch(chatWindowSource, /new ResizeObserver\(updateBottomComposerHeight\)/);
+  assert.match(chatWindowSource, /spacer\.style\.height = `\$\{next\}px`/);
+  assert.match(chatWindowSource, /if \(atBottom\) container\.scrollTop = container\.scrollHeight/);
+  assert.match(chatWindowSource, /className=\{isEmptyNew \? "relative shrink-0" : "absolute inset-x-0 z-20"\}/);
 });
 
 test("keeps a detached viewport in place when streaming completes", () => {

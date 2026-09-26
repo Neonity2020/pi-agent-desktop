@@ -34,7 +34,7 @@ test("puts the composer column on the message column's axis", () => {
 
   assert.match(
     source,
-    /<div className="relative shrink-0" style=\{scrollbarGutter > 0 \? \{ paddingRight: scrollbarGutter \} : undefined\}>/,
+    /\.\.\.\(scrollbarGutter > 0 \? \{ paddingRight: scrollbarGutter \} : \{\}\)/,
     "the composer must reserve exactly the gutter the message list takes",
   );
   assert.match(
