@@ -399,7 +399,11 @@ Location: `~/.pi/agent/sessions/<encoded-cwd>/<timestamp>_<uuid>.jsonl`
 
 ---
 
-## CSS Variables (`app/globals.css`)
+## Styling: fork CSS lives only in `app/native-theme.css`
+
+`app/globals.css` and `app/settings.css` are pi-web's and stay byte-identical to upstream — `scripts/upstream-css-baseline.test.mjs` fails on any edit. Put every fork rule in `app/native-theme.css` (imported last in `app/layout.tsx`); overrides of upstream rules that other theme rules must beat go in its "fork base layer" at the top. After an upstream merge run `node scripts/upstream-css-baseline.mjs update <upstream-ref>` (the sync workflow does). Layout of the theme file and the design intent to restore after a merge: `docs/native-theme.md`.
+
+## CSS Variables (`app/globals.css`, re-tokened in `app/native-theme.css`)
 
 ```
 --bg --bg-panel --bg-hover --bg-selected --border
