@@ -353,6 +353,8 @@ export const zhTWLocale: LocalePlugin = {
     "chat.quoteIntro": "關於這段內容：",
     "chat.quoteQuestion": "我的問題是：",
     "chat.quoteForkFailed": "無法從這則訊息建立分支。",
+    "chat.forkFailed": "分叉失敗：{error}",
+    "chat.navigateFailed": "無法讓 agent 切換到此分支：{error}",
     "chat.attachImage": "附加圖片",
     "chat.previewImage": "預覽圖片",
     "chat.filterModels": "篩選模型…",

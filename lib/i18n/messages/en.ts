@@ -396,6 +396,8 @@ export const enLocale: LocalePlugin = {
     "chat.quoteIntro": "About this passage:",
     "chat.quoteQuestion": "My question:",
     "chat.quoteForkFailed": "Unable to create a branch from this message.",
+    "chat.forkFailed": "Fork failed: {error}",
+    "chat.navigateFailed": "Couldn't switch the agent to this branch: {error}",
     "chat.attachImage": "Attach image",
     "chat.dropFilesHint": "Drop to add to chat",
     "chat.dropFilesDetail": "Images attach to the message. Other files are copied into the project and inserted as @paths.",

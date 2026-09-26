@@ -395,6 +395,8 @@ export const zhCNLocale: LocalePlugin = {
     "chat.quoteIntro": "关于这段内容：",
     "chat.quoteQuestion": "我的问题是：",
     "chat.quoteForkFailed": "无法从这条消息创建分支。",
+    "chat.forkFailed": "分叉失败：{error}",
+    "chat.navigateFailed": "无法让 agent 切换到此分支：{error}",
     "chat.attachImage": "附加图片",
     "chat.dropFilesHint": "松开以添加到对话",
     "chat.dropFilesDetail": "图片会作为消息附件；其他文件会复制到项目根目录并插入为 @路径。",
