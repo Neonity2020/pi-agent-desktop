@@ -1151,6 +1151,12 @@ function TextFileViewer({
   const [displayMode, setDisplayMode] = useState<DisplayMode>(requestedInitialDisplayMode);
   const [wrapLines, setWrapLines] = useState(initialWrapLines);
   const [watching, setWatching] = useState(false);
+  // HTML preview: the file is served from the app origin so its relative CSS,
+  // images and fonts load, which is only safe with scripts off (sandbox without
+  // allow-scripts, plus the route's CSP). Pages that need JS can opt into an
+  // isolated srcDoc sandbox instead, where scripts run but local files don't load.
+  const [htmlScriptsEnabled, setHtmlScriptsEnabled] = useState(false);
+  const [htmlPreviewRevision, setHtmlPreviewRevision] = useState(0);
   const esRef = useRef<EventSource | null>(null);
   const contentRequestRef = useRef(0);
   const gitDiffRequestRef = useRef(0);
@@ -1301,7 +1307,12 @@ function TextFileViewer({
       synchronize();
     });
 
-    es.addEventListener("change", synchronize);
+    es.addEventListener("change", () => {
+      synchronize();
+      // The served preview reads from disk itself; reload it on real changes
+      // only (not on "connected", which would wipe what the user typed into it).
+      setHtmlPreviewRevision((revision) => revision + 1);
+    });
 
     const markDisconnected = () => {
       setWatching(false);
@@ -1350,6 +1361,8 @@ function TextFileViewer({
   const language = data?.language ?? "text";
   const isHtml = language === "html";
   const isMarkdown = language === "markdown";
+  const htmlHasScripts = isHtml && /<script\b/i.test(viewerContent);
+  const htmlPreviewUrl = getFileApiUrl(filePath, "serve", sourceSessionId, { v: htmlPreviewRevision });
   const hasPreview = !data?.truncated && (isHtml || isMarkdown);
   // Only the first chunk of a large file is loaded, so preview is unavailable
   // until the rest arrives; a preview default falls back to source instead of
@@ -1596,6 +1609,21 @@ function TextFileViewer({
           )}
 
           <div className="file-viewer-actions">
+            {isHtml && effectiveDisplayMode === "preview" && htmlHasScripts && (
+              <button
+                type="button"
+                onClick={() => setHtmlScriptsEnabled((enabled) => !enabled)}
+                title={t(htmlScriptsEnabled ? "files.htmlScriptsOnTitle" : "files.htmlScriptsOffTitle")}
+                aria-pressed={htmlScriptsEnabled}
+                className="file-viewer-mode-button"
+                style={{
+                  background: htmlScriptsEnabled ? "var(--bg-selected)" : "transparent",
+                  color: htmlScriptsEnabled ? "var(--text)" : "var(--text-muted)",
+                }}
+              >
+                {t("files.htmlRunScripts")}
+              </button>
+            )}
             {(onAtMention || onMentionLines) && (
               <button
                 type="button"
@@ -1694,12 +1722,23 @@ function TextFileViewer({
         {effectiveDisplayMode === "diff" && hasGitDiff ? (
           <DiffView patch={gitDiff.patch!} />
         ) : isHtml && effectiveDisplayMode === "preview" ? (
-          <iframe
-            srcDoc={content}
-            sandbox="allow-scripts"
-            style={{ width: "100%", height: "100%", border: "none", background: "var(--bg)" }}
-             title={t("i18n.htmlPreview")}
-          />
+          htmlScriptsEnabled && htmlHasScripts ? (
+            <iframe
+              key="html-preview-scripts"
+              srcDoc={content}
+              sandbox="allow-scripts"
+              style={{ width: "100%", height: "100%", border: "none", background: "var(--bg)" }}
+              title={t("i18n.htmlPreview")}
+            />
+          ) : (
+            <iframe
+              key={htmlPreviewUrl}
+              src={htmlPreviewUrl}
+              sandbox="allow-same-origin"
+              style={{ width: "100%", height: "100%", border: "none", background: "var(--bg)" }}
+              title={t("i18n.htmlPreview")}
+            />
+          )
         ) : isMarkdown && effectiveDisplayMode === "preview" ? (
           <div
             className="markdown-body markdown-file-preview"
