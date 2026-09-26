@@ -1460,11 +1460,32 @@ export function AppShell() {
 
   const activeFileTab = fileTabs.find((t) => t.id === activeFileTabId) ?? null;
 
+  // File panel "…" menu: copy the active file's path or contents. The item
+  // confirms briefly before the menu closes, since nothing else changes on screen.
+  const [fileCopyFeedback, setFileCopyFeedback] = useState<{ field: "path" | "contents"; ok: boolean } | null>(null);
+  const fileCopyTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  useEffect(() => () => {
+    if (fileCopyTimerRef.current) clearTimeout(fileCopyTimerRef.current);
+  }, []);
+  const finishFileCopy = useCallback((field: "path" | "contents", ok: boolean) => {
+    if (fileCopyTimerRef.current) clearTimeout(fileCopyTimerRef.current);
+    setFileCopyFeedback({ field, ok });
+    fileCopyTimerRef.current = setTimeout(() => {
+      setFileCopyFeedback(null);
+      if (ok) setFileActionsMenuOpen(false);
+    }, ok ? 700 : 1600);
+  }, []);
+
   const copyActiveFilePath = useCallback(async () => {
     if (!activeFileTab?.filePath) return;
-    await navigator.clipboard?.writeText(activeFileTab.filePath);
-    setFileActionsMenuOpen(false);
-  }, [activeFileTab?.filePath]);
+    try {
+      await copyText(activeFileTab.filePath);
+      finishFileCopy("path", true);
+    } catch (error) {
+      console.error("Failed to copy file path:", error);
+      finishFileCopy("path", false);
+    }
+  }, [activeFileTab?.filePath, finishFileCopy]);
 
   const copyActiveFileContent = useCallback(async () => {
     if (!activeFileTab?.filePath) return;
@@ -1472,12 +1493,33 @@ export function AppShell() {
       const response = await fetch(`/api/files/${encodeFilePathForApi(activeFileTab.filePath)}?type=read`);
       const data = await response.json() as { content?: string; error?: string };
       if (!response.ok || typeof data.content !== "string") throw new Error(data.error ?? `HTTP ${response.status}`);
-      await navigator.clipboard?.writeText(data.content);
-      setFileActionsMenuOpen(false);
+      await copyText(data.content);
+      finishFileCopy("contents", true);
     } catch (error) {
       console.error("Failed to copy file content:", error);
+      finishFileCopy("contents", false);
     }
-  }, [activeFileTab?.filePath]);
+  }, [activeFileTab?.filePath, finishFileCopy]);
+
+  useEffect(() => {
+    if (!fileActionsMenuOpen) return;
+    const handlePointerDown = (event: MouseEvent) => {
+      if (!fileActionsMenuRef.current?.contains(event.target as Node)) setFileActionsMenuOpen(false);
+    };
+    const handleEscape = (event: KeyboardEvent) => {
+      if (event.key === "Escape" && !isImeComposing(event)) setFileActionsMenuOpen(false);
+    };
+    document.addEventListener("mousedown", handlePointerDown);
+    document.addEventListener("keydown", handleEscape);
+    return () => {
+      document.removeEventListener("mousedown", handlePointerDown);
+      document.removeEventListener("keydown", handleEscape);
+    };
+  }, [fileActionsMenuOpen]);
+  // A menu left open must not outlive the file it acts on.
+  useEffect(() => {
+    setFileActionsMenuOpen(false);
+  }, [activeFileTabId]);
   const activeCwdName = activeCwd ? getFileName(activeCwd) || activeCwd : null;
   const windowTitle = activeCwdName ? `${activeCwdName} - ${PRODUCT_NAME}` : PRODUCT_NAME;
   const topBarTitle = selectedSession
@@ -2599,6 +2641,44 @@ export function AppShell() {
                 <path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2Z" /><path d="M15 7v10" />
               </svg>
             </button>
+          )}
+          {activeFileTab?.filePath && (
+            <div className="file-actions-menu-anchor" ref={fileActionsMenuRef}>
+              <button
+                type="button"
+                className="file-workbench-icon-button"
+                onClick={() => setFileActionsMenuOpen((open) => !open)}
+                title={translate("contextPanel.fileActions")}
+                aria-label={translate("contextPanel.fileActions")}
+                aria-haspopup="menu"
+                aria-expanded={fileActionsMenuOpen}
+              >
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><circle cx="5" cy="12" r="1.5" /><circle cx="12" cy="12" r="1.5" /><circle cx="19" cy="12" r="1.5" /></svg>
+              </button>
+              {fileActionsMenuOpen && (
+                <div className="native-popover file-actions-menu" role="menu" aria-label={translate("contextPanel.fileActions")}>
+                  {([
+                    ["path", "contextPanel.copyPath", copyActiveFilePath],
+                    ["contents", "contextPanel.copyContents", copyActiveFileContent],
+                  ] as const).map(([field, labelKey, onCopy]) => {
+                    const feedback = fileCopyFeedback?.field === field ? fileCopyFeedback : null;
+                    return (
+                      <button key={field} type="button" role="menuitem" onClick={() => void onCopy()}>
+                        <span className="file-action-menu-icon" aria-hidden="true">
+                          <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+                            <rect x="8" y="8" width="11" height="11" rx="2" />
+                            <path d="M16 8V7a2 2 0 0 0-2-2H7a2 2 0 0 0-2 2v7a2 2 0 0 0 2 2h1" />
+                          </svg>
+                        </span>
+                        <span role={feedback ? "status" : undefined}>
+                          {feedback ? translate(feedback.ok ? "contextPanel.copied" : "contextPanel.copyFailed") : translate(labelKey)}
+                        </span>
+                      </button>
+                    );
+                  })}
+                </div>
+              )}
+            </div>
           )}
           <button
             type="button"
