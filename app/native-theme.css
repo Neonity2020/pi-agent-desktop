@@ -1437,6 +1437,14 @@ select {
   font: inherit;
 }
 
+/* WebKitGTK does not always project the textarea's line-height onto the
+   ::placeholder pseudo-element, so the composer placeholder renders with a
+   smaller line box and its glyphs get clipped (#64). Make it explicit;
+   matches the inline lineHeight: 1.6 on .chat-input-textarea. */
+.chat-input-textarea::placeholder {
+  line-height: 1.6;
+}
+
 button:focus-visible,
 input:focus-visible,
 textarea:focus-visible,
