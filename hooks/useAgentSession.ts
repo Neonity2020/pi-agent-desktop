@@ -678,7 +678,7 @@ export function useAgentSession(opts: UseAgentSessionOptions) {
     );
     try {
       if (showLoading) setLoading(true);
-      const params = new URLSearchParams({ deferThinking: "1", deferMedia: "1", tree: "summary" });
+      const params = new URLSearchParams({ deferThinking: "1", deferMedia: "1", tree: "summary", wholeTurns: "1" });
       if (options?.force) params.set("force", "1");
       // A hung first attempt must not leave "loading session" on screen
       // forever: abandon it, retry once with a longer deadline. The server
@@ -833,7 +833,7 @@ export function useAgentSession(opts: UseAgentSessionOptions) {
       && !options?.signal?.aborted
     );
     try {
-      const params = new URLSearchParams({ deferThinking: "1", deferMedia: "1" });
+      const params = new URLSearchParams({ deferThinking: "1", deferMedia: "1", wholeTurns: "1" });
       if (leafId) params.set("leafId", leafId);
       // Page upward: ask the server for the `tail` ancestors preceding `before`,
       // then prepend them. Omitting `before` fetches the most-recent `tail`.
@@ -2066,7 +2066,10 @@ export function useAgentSession(opts: UseAgentSessionOptions) {
     try {
       const result = await sendAgentCommand<CompactCommandResult>(sid, { type: "compact" });
       setCompactResult(readCompactResult(result, "manual"));
-      await loadSession(sid, true);
+      // includeState: manual compact ends no model run, so no agent_end ever
+      // refreshes contextUsage — the ring would keep the pre-compact percentage
+      // until the next turn (PR #38).
+      await loadSession(sid, true, true);
     } catch (e) {
       setCompactError(e instanceof Error ? e.message : String(e));
       setCompactResult(null);
@@ -2160,7 +2163,8 @@ export function useAgentSession(opts: UseAgentSessionOptions) {
             ...(args ? { customInstructions: args } : {}),
           });
           setCompactResult(readCompactResult(result, "manual"));
-          if (await loadSession(sid, true)) promoteNewSession();
+          // includeState refreshes contextUsage — see handleCompact (PR #38).
+          if (await loadSession(sid, true, true)) promoteNewSession();
           return complete({ handled: true, message: "Compacted context" });
         }
 

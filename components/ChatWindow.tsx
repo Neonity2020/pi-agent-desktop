@@ -1312,7 +1312,7 @@ export function ChatWindow({ session, searchTarget, onSearchTargetHandled, initi
           // the centred column cannot shift when a short session grows past one
           // screen; the left padding mirrors it to centre the column on the
           // composer's axis.
-          className="scrollbar-subtle min-w-0 flex-1 overflow-x-hidden overflow-y-scroll pt-4"
+          className="chat-scroll-container scrollbar-subtle min-w-0 flex-1 overflow-x-hidden overflow-y-scroll pt-4"
           style={{
             paddingLeft: scrollbarGutter > 0 ? scrollbarGutter : undefined,
             visibility: pendingScrollRestore && !loading ? "hidden" : undefined,

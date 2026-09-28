@@ -356,11 +356,11 @@ try {
         await page.locator(`[data-entry-id="${entryId}"]:not([data-message-role])`).waitFor({ state: "visible" });
       };
       const readingOffset = (target) => target.evaluate((element) => (
-        element.getBoundingClientRect().top - element.closest(".overflow-y-auto").getBoundingClientRect().top
+        element.getBoundingClientRect().top - element.closest(".chat-scroll-container").getBoundingClientRect().top
       ));
       const positionForReading = async (target) => {
         await target.evaluate((element) => {
-          const scroll = element.closest(".overflow-y-auto");
+          const scroll = element.closest(".chat-scroll-container");
           scroll.scrollTop += element.getBoundingClientRect().top - scroll.getBoundingClientRect().top - 120;
         });
         return readingOffset(target);
@@ -389,13 +389,13 @@ try {
       await selectSession(text(0), "e4920");
       await page.waitForFunction(({ entryId, expected }) => {
         const element = document.querySelector(`[data-entry-id="${entryId}"]:not([data-message-role])`);
-        const scroll = element?.closest(".overflow-y-auto");
+        const scroll = element?.closest(".chat-scroll-container");
         if (!element || !scroll) return false;
         return Math.abs(element.getBoundingClientRect().top - scroll.getBoundingClientRect().top - expected) < 5;
       }, { entryId: "e4920", expected: olderOffset }, { timeout: 10000 }).catch(async (error) => {
         const details = await page.evaluate(() => {
           const element = document.querySelector('[data-entry-id="e4920"]:not([data-message-role])');
-          const scroll = element?.closest(".overflow-y-auto");
+          const scroll = element?.closest(".chat-scroll-container");
           return {
             present: Boolean(element),
             scrollTop: scroll?.scrollTop,
@@ -413,7 +413,7 @@ try {
       assert.equal(await process.getAttribute("aria-expanded"), "false");
       await page.waitForFunction((expected) => {
         const element = Array.from(document.querySelectorAll("h2")).find((heading) => heading.textContent === "E2E reading position");
-        const scroll = element?.closest(".overflow-y-auto");
+        const scroll = element?.closest(".chat-scroll-container");
         if (!element || !scroll) return false;
         return Math.abs(element.getBoundingClientRect().top - scroll.getBoundingClientRect().top - expected) < 5;
       }, answerOffset);

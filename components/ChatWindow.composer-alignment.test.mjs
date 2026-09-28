@@ -8,7 +8,7 @@ const inputSource = await readFile(new URL("./ChatInput.tsx", import.meta.url), 
 test("keeps the message scrollbar track so the column cannot move with content", () => {
   assert.match(
     source,
-    /className="scrollbar-subtle min-w-0 flex-1 overflow-x-hidden overflow-y-scroll pt-4"/,
+    /className="chat-scroll-container scrollbar-subtle min-w-0 flex-1 overflow-x-hidden overflow-y-scroll pt-4"/,
     "the message scrollport must always show its track, whether or not the session overflows yet",
   );
   // WebKit (the macOS desktop shell) does not reliably honour scrollbar-gutter,
