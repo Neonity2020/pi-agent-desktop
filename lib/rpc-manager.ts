@@ -360,9 +360,24 @@ export class AgentSessionWrapper {
       }
       if (IDLE_RESET_EVENT_TYPES.has(event.type)) this.resetIdleTimer();
       this.emit(event);
+      // `agent_end` fires before the post-run pipeline (compaction, branch
+      // summaries, queued continuations) completes, so the running set can
+      // only shrink at `agent_settled` — or when the RPC prompt itself
+      // settles (see finishPrompt). Compaction also flips `isCompacting`
+      // outside any run (manual compact).
+      if (
+        event.type === "agent_settled"
+        || event.type === "compaction_start"
+        || event.type === "compaction_end"
+      ) {
+        notifyRunningChange();
+      }
       if (event.type === "agent_settled") this.notifyAgentRunCompleteIfIdle();
     });
     this.resetIdleTimer();
+    // A reopened wrapper may already be running (restored mid-run); make
+    // connected sidebars reconcile instead of waiting for the next event.
+    notifyRunningChange();
   }
 
   private notifyAgentRunCompleteIfIdle(): void {
@@ -459,6 +474,10 @@ export class AgentSessionWrapper {
       return await operation();
     } finally {
       this.resetIdleTimer();
+      // Abort/compact settle outside the run broadcasts above when the
+      // session was idle beforehand (nothing to abort, compact finished
+      // without touching a run).
+      notifyRunningChange();
     }
   }
 
@@ -638,10 +657,19 @@ export class AgentSessionWrapper {
             promptSettled = true;
             this.pendingPromptCount = Math.max(0, this.pendingPromptCount - 1);
             this.resetIdleTimer();
+            // The prompt promise settles AFTER agent_end/agent_settled were
+            // broadcast (the SDK resolves it only once the run is fully idle),
+            // and pendingPromptCount kept isRunning() true until now. Without
+            // this broadcast the last frame on the running-events stream still
+            // contains the session id and the sidebar spinner never stops.
+            notifyRunningChange();
             this.notifyAgentRunCompleteIfIdle();
           };
 
           this.pendingPromptCount += 1;
+          // Admission already makes isRunning() true; the SDK's agent_start
+          // (and its broadcast) may lag behind preflight by a beat.
+          notifyRunningChange();
           let prompt: Promise<void>;
           try {
             prompt = this.inner.prompt(command.message as string, {
@@ -1031,6 +1059,7 @@ export class AgentSessionWrapper {
             }),
           },
         );
+        notifyRunningChange();
         try {
           const result = await execution;
           this.persistBashOnlySession();
@@ -1038,6 +1067,9 @@ export class AgentSessionWrapper {
         } finally {
           this.resetIdleTimer();
           invalidateSessionListCache();
+          // executeBash emits no start/end SDK events (only output deltas);
+          // keep the running-events stream in sync from the RPC boundary.
+          notifyRunningChange();
         }
       }
 
@@ -1724,7 +1756,13 @@ function registerRpcWrapper(wrapper: AgentSessionWrapper): void {
   const registry = getRegistry();
   const sessionId = wrapper.sessionId;
   if (wrapper.sessionFile) cacheSessionPath(sessionId, wrapper.sessionFile);
-  wrapper.onDestroy(() => registry.delete(sessionId));
+  wrapper.onDestroy(() => {
+    registry.delete(sessionId);
+    // A destroyed wrapper leaves the running set (idle shutdown, branch
+    // switch, fork/clone replacement); push the new set so sidebars clear
+    // its spinner instead of waiting for the next broadcast.
+    notifyRunningChange();
+  });
   registry.set(sessionId, wrapper);
   wrapper.start();
   if (!wrapper.isChatOnly()) wrapper.beginExtensionBinding();
